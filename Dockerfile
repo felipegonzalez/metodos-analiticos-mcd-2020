@@ -84,3 +84,5 @@ RUN install2.r --error \
 
 RUN install2.r --error tm text2vec textrank \
      tidytext textreuse \
+     ggraph
+
