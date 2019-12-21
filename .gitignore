@@ -1,3 +1,6 @@
 .rstudio/
 notas/_bookdown_files/
 .Rproj.user
+.netlify/
+notas/_book/
+notas/*.rds
