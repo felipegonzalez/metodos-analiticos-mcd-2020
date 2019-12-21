@@ -1086,7 +1086,6 @@ ggraph(graph_1, layout = 'fr', start.temp=100) +
 
 Para gráficas más grandes, es mejor usar software especializado
 para investigar las redes que obtenemos (como [Gephi](https://gephi.org)):
-
 ```{r}
 library(readr)
 b_reglas_lift <- subset(b_reglas, hyper_lift > 1.5 & lhs.support > 0.01)
@@ -1103,7 +1102,8 @@ Para el análisis de canastas grandes:
 
 ```{r, fig.width=10, fig.height=8, warning = FALSE}
 reglas_f2 <- subset(reglas_1, hyper_lift > 1.3, confidence > 0.4)
-df_reglas <- reglas_f2 %>% DATAFRAME %>% rename(from=LHS, to=RHS) %>% as_data_frame
+df_reglas <- reglas_f2 %>% DATAFRAME %>% rename(from = LHS, to = RHS) %>% 
+  as_tibble
 df_reglas$weight <- log(df_reglas$hyper_lift)
 graph_1 <- as_tbl_graph(df_reglas) %>%
   mutate(centrality = centrality_degree(mode = 'all'))
