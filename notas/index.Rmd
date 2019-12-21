@@ -40,6 +40,6 @@ para escalar datos grandes. El enfoque del curso se concentra más en el entendi
 - Proyecto final (40\%)
 
 Nuestro texto básico es [@mmd]. Referencias básicas adicionales son
-[@jurafsky] (para procesamiento de lenguaje natural), y [@sparklyr] para
-utlizar la interfaz de R a [Spark](https://spark.apache.org).
+[@jurafsky] (para procesamiento de lenguaje natural), y [sparklyr](https://therinspark.com/) para
+utlizar la interfaz de R a [Spark](https://spark.apache.org). 
 
