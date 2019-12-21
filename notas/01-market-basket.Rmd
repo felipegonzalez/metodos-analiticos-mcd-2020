@@ -12,7 +12,8 @@ subconjuntos frecuentes, entonces podemos entender mejor el tipo de compras
 que hacen los clientes, diseñar mejor promociones y entender potenciales efectos
 cruzados, reordenar los estantes del supermercado, etc. 
 
-En general, los conjuntos frecuentes indican asociaciones (y cuantificaciones de la asociación) entre artículos que hay que tomar en cuenta al momento
+En general, los conjuntos frecuentes indican asociaciones (y cuantificaciones de la asociación) 
+entre artículos que hay que tomar en cuenta al momento
 de tomar decisiones. Esto normalmente se llama análisis de **market basket**.
 
 El análisis de subconjuntos frecuentes puede ser utilizado para 
@@ -64,8 +65,9 @@ Podemos hacer una tabla con las canastas y
 examinar los artículos más frecuentes:
 
 ```{r}
-canastas_nest <- data_frame(canasta_id = 1:length(lista_mb),
-                      articulos = lista_mb) 
+canastas_nest <- tibble(
+  canasta_id = 1:length(lista_mb),
+  articulos = lista_mb) 
 canastas_nest
 canastas_nest$articulos[[1]]
 ```
@@ -73,7 +75,7 @@ canastas_nest$articulos[[1]]
 ```{r, fig.width=4, fig.asp=0.7}
 num_canastas <- nrow(canastas_nest)
 articulos_frec <- canastas_nest %>% 
-    unnest %>% 
+    unnest(cols = articulos) %>% 
     group_by(articulos) %>%
     summarise(n  = n()) %>%
     mutate(prop = n / num_canastas) %>%
@@ -88,8 +90,6 @@ Y vemos que hay algunos pocos artículos que ocurren a tasas muy altas en
 las canastas. La mayoría tiene tasas de ocurrencia baja, y muchos ocurren en una
 fracción pequeña de las transacciones.
 
-
-
 Un primer análisis que podríamos considerar es 
 el de canastas **completas** que ocurren frecuentemente. ¿Qué tan
 útil crees que puede ser este análisis?
@@ -100,8 +100,7 @@ colapsar_canasta <- function(x, sep = '-'){
   x %>% as.character %>% sort %>% paste(collapse = '-')
 }
 canastas_conteo <- canastas_nest %>%
-                rowwise() %>%
-                mutate(canasta_str = colapsar_canasta(articulos)) %>%
+                mutate(canasta_str = map_chr(articulos, colapsar_canasta)) %>%
                 group_by(canasta_str) %>%
                 summarise(n = n()) %>%
                 mutate(prop = round(n /num_canastas, 5)) %>%
@@ -117,7 +116,8 @@ DT::datatable(canastas_conteo %>% head(n = 100) %>%
 ```
 
 Hay algunas canastas (principalmente canastas que contienen solo
-un artículo) que aparecen con frecuencia considerable (alrededor de $1\%$ o $2\%$), pero las canastas están bastante dispersas en el espacio de posibles 
+un artículo) que aparecen con frecuencia considerable (alrededor de $1\%$ o $2\%$), 
+pero las canastas están bastante dispersas en el espacio de posibles 
 canastas (que es gigantesco: ¿puedes calcularlo?). Debido a esta dispersión (las canastas
 se distribuyen de manera rala en el espacio de posibles canastas), este análisis es
 de utilidad limitada.
@@ -218,8 +218,9 @@ inspect(sort(ap_soda, by ='support')[1:5])
 
 **Observaciones**:
 
-- Si hay $m$ artículos, entonces el número de posibles itemsets es de $2^m -1$. Este es un 
-número típicamente muy grande. En nuestro ejemplo, existen unos $7\times 10^{50}$ posibles itemsets. El número de itemsets de un tamaño fijo, por ejemplo $k=5$, también puede ser muy
+- Si hay $m$ artículos, entonces el número de _posibles_ itemsets es de $2^m -1$. Este es un 
+número típicamente muy grande. En nuestro ejemplo, existen unos $7\times 10^{50}$ 
+posibles itemsets. El número de itemsets de un tamaño fijo, por ejemplo $k=5$, también puede ser muy
 grande ( $169 \choose 5$ es del orden de miles de millones).
 - Si existe un gran número canastas, contar todas las posibles subcanastas que ocurren es poco factible si lo hacemos por fuerza bruta: requeríamos usar tablas en disco  que son relativamente lentas, y quizá no podremos mantener en memoria todos los conteos.
 - Sin embargo, en el ejemplo de arriba encontramos solamente `r length(ap)` itemsets frecuentes: este número es relativamente chico comparado con el número de posibles itemsets. Esto nos da
@@ -245,8 +246,10 @@ length(ap_todos)
 que es órdenes de magnitud más grande que el conjunto de todas las transacciones. 
 
 En este ejemplo chico, el cálculo de esta colección (hasta canastas de tamaño 6) 
-puede requerir hasta unos 4Gb de memoria (8Gb no son suficientes para encontrar los de tamaño $8$, $9$ y $10$).
-Puedes ver entonces que para conjuntos de transacciones masivos, **contar todos los itemsets generalmente será un proceso muy lento si no es que más bien infactible**.
+puede requiere menos de unos 4Gb de memoria (8Gb no son suficientes para encontrar 
+los de tamaño $8$, $9$ y $10$).
+Puedes ver entonces que para conjuntos de transacciones masivos, 
+**contar todos los itemsets generalmente será un proceso muy lento si no es que más bien infactible**.
 
 
 ## Monotonicidad de conjuntos frecuentes
@@ -377,7 +380,12 @@ paper original sugiere una estructura de árbol para encontrar los
 subconjuntos de $t$ que están en $C_k$. Ver también [@borgelt].
 
 - Más detalles de la implementación de los algoritmos (incluyendo
-algunos más modernos como FPGrowth, que está implementado en spark) se puede encontrar en [@mmd] y en [@borgelt].
+algunos más modernos como FPGrowth, que está implementado en spark) 
+se puede encontrar en [@mmd] y en [@borgelt]. FPGrowth construye una representación
+eficiente
+de árbol para los itemsets frecuentes y con esto evita el paso de construcción
+de candidatos (aunque tiene que mantener en memoria el árbol, que puede ser
+una estructura grande).
 
 ## Modelos simples para análisis de canastas
 
@@ -917,15 +925,17 @@ length(filtradas_lift)
 Vemos que las reglas cortadas con *hyper-lift* tienen mejores valores 
 de soporte
 
-```{r, fig.width=4, fig.asp=1}
-qqplot(quality(filtradas_hl)$support, 
-       quality(filtradas_lift)$support,
-       xlab = 'Filtro Hyper-lift',
-       ylab = 'Filtro Lift',
-       main = 'Soporte',
-       xlim=c(0,0.025),
-       ylim=c(0,0.025))
-abline(0,1,col='red')
+```{r, fig.width=4}
+soportes <- qqplot(
+    quality(filtradas_hl)$support, 
+    quality(filtradas_lift)$support, plot.it = FALSE) %>% 
+  as_tibble()
+ggplot(soportes, aes(x, y)) +
+  geom_abline(colour = "red") +
+  geom_point() +
+  xlab("Soporte  (filtro Hyperlift)") +
+  ylab("Soporte (filtro Lift)") + 
+  coord_fixed(xlim = c(0, 0.03), ylim = c(0,0.03)) 
 ```
 
 
@@ -933,15 +943,16 @@ Sin embargo, la distribución de valores de *lift* no es tan diferente, de forma
 medida de calidad no se degrada en el conjunto de reglas que encontramos:
 
 
-```{r, fig.width=4, fig.asp=1}
-qqplot(quality(filtradas_hl)$lift, 
-       quality(filtradas_lift)$lift,
-       xlab = 'Filtro Hyper-lift',
-       ylab = 'Filtro Lift',
-       main = 'Lift',
-       xlim=c(2.5,11.5),
-       ylim=c(2.5,11.5))
-abline(0,1,col='red')
+```{r, fig.width=4}
+soportes <- qqplot(
+    quality(filtradas_hl)$lift, 
+    quality(filtradas_lift)$lift, plot.it = FALSE) %>% 
+  as_tibble()
+ggplot(soportes, aes(x, y)) +
+  geom_abline(colour = "red") +
+  geom_point() +
+  xlab("Lift (filtro Hyperlift)") +
+  ylab("Lift (filtro Lift)") + coord_fixed()
 ```
 
 En resumen, al utilizar *hyper-lift* para filtrar reglas en lugar de *lift* obtenemos reglas de mejor calidad:
