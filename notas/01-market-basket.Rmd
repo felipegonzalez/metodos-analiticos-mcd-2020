@@ -1066,7 +1066,7 @@ reglas_f <- subset(b_reglas_lift, size(b_reglas_lift)==2)
 ```{r, fig.width=10, fig.height=8, warning = FALSE}
 library(tidygraph)
 library(ggraph)
-df_reglas <- reglas_f %>% DATAFRAME %>% rename(from=LHS, to=RHS) %>% as_data_frame
+df_reglas <- reglas_f %>% DATAFRAME %>% rename(from=LHS, to=RHS) %>% as_tibble
 df_reglas$weight <- log(df_reglas$hyper_lift)
 nrow(df_reglas)
 graph_1 <- as_tbl_graph(df_reglas) %>%
@@ -1089,12 +1089,11 @@ para investigar las redes que obtenemos (como [Gephi](https://gephi.org)):
 
 ```{r}
 library(readr)
-b_reglas_lift <- subset(b_reglas, 
-                        hyper_lift > 1.5 & lhs.support > 0.01)
+b_reglas_lift <- subset(b_reglas, hyper_lift > 1.5 & lhs.support > 0.01)
 reglas_f <- subset(b_reglas_lift, size(b_reglas_lift)==2)
 length(reglas_f)
-write_csv(reglas_f %>% DATAFRAME %>% rename(source=LHS, target=RHS) %>%
-            select(-count), 
+write_csv(reglas_f %>% DATAFRAME %>% 
+          rename(source=LHS, target=RHS) %>% select(-count), 
           path='./salidas/reglas.csv')
 ```
 
