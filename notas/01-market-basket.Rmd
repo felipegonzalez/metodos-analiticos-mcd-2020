@@ -850,9 +850,7 @@ en cuanto a lo que quieren capturar.
 Veamos cómo se comporta el *hyper-lift* simulando datos con el modelo de independencia:
 
 ```{r}
-trans <- simular_transacciones(nItems = 169, 
-                               nTrans = 10000, 
-                               iprob = probs_items)
+trans <- simular_transacciones(n_items = 169, n_trans = 10000, prob = probs_items)
 ap_random <- apriori(trans, parameter = 
                        list(support=0.001, confidence = 0.10, 
                             target='rules', ext = TRUE, minlen = 2),
@@ -1003,9 +1001,9 @@ Podemos ordenar por *hyper-lift*:
 ```{r}
 plotly_arules(reglas_1, colors=c('red','gray'))
 reglas_1 <- agregar_hyperlift(reglas_1, lista_mb)
-DT::datatable(DATAFRAME(sort(reglas_1, by='hyper_lift')) %>%
+DT::datatable(DATAFRAME(sort(reglas_1, by = 'hyper_lift')) %>%
                 select(-count, -lhs.support) %>% 
-                mutate_if(is.numeric, funs(round(., 2))))
+                mutate_if(is.numeric, ~ round(.x, 2)))
 ```
 
 **Observaciones**: conforme bajamos en esta tabla (ordenada por soporte), las estimaciones
@@ -1041,7 +1039,7 @@ b_reglas_lift <- subset(b_reglas,
 b_reglas_lift <- sort(b_reglas_lift, by = 'hyper_lift')
 DT::datatable(DATAFRAME(b_reglas_lift)  %>%
                 select(-count, -lhs.support) %>% 
-                mutate_if(is.numeric, funs(round(., 3))))
+                mutate_if(is.numeric, ~ round(.x, 3)))
 ```
 
 
@@ -1065,7 +1063,7 @@ no obtener demasiadas reglas o demasiado pocas)
 ```{r, results=FALSE, message=FALSE}
 b_reglas_lift <- subset(b_reglas, 
                         hyper_lift > 1.75 & confidence > 0.1)
-reglas_f <- subset(b_reglas_lift, size(b_reglas_lift)==2)
+reglas_f <- subset(b_reglas_lift, size(b_reglas_lift) == 2)
 ```
 
 
@@ -1073,7 +1071,7 @@ reglas_f <- subset(b_reglas_lift, size(b_reglas_lift)==2)
 ```{r, fig.width=10, fig.height=8, warning = FALSE}
 library(tidygraph)
 library(ggraph)
-df_reglas <- reglas_f %>% DATAFRAME %>% rename(from=LHS, to=RHS) %>% as_tibble
+df_reglas <- reglas_f %>% DATAFRAME %>% rename(from = LHS, to = RHS) 
 df_reglas$weight <- log(df_reglas$hyper_lift)
 nrow(df_reglas)
 graph_1 <- as_tbl_graph(df_reglas) %>%
@@ -1096,7 +1094,7 @@ para investigar las redes que obtenemos (como [Gephi](https://gephi.org)):
 ```{r}
 library(readr)
 b_reglas_lift <- subset(b_reglas, hyper_lift > 1.5 & lhs.support > 0.01)
-reglas_f <- subset(b_reglas_lift, size(b_reglas_lift)==2)
+reglas_f <- subset(b_reglas_lift, size(b_reglas_lift) == 2)
 length(reglas_f)
 write_csv(reglas_f %>% DATAFRAME %>% 
           rename(source=LHS, target=RHS) %>% select(-count), 
@@ -1109,8 +1107,7 @@ Para el análisis de canastas grandes:
 
 ```{r, fig.width=10, fig.height=8, warning = FALSE}
 reglas_f2 <- subset(reglas_1, hyper_lift > 1.3, confidence > 0.4)
-df_reglas <- reglas_f2 %>% DATAFRAME %>% rename(from = LHS, to = RHS) %>% 
-  as_tibble
+df_reglas <- reglas_f2 %>% DATAFRAME %>% rename(from = LHS, to = RHS) 
 df_reglas$weight <- log(df_reglas$hyper_lift)
 graph_1 <- as_tbl_graph(df_reglas) %>%
   mutate(centrality = centrality_degree(mode = 'all'))
