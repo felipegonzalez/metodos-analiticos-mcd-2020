@@ -81,7 +81,7 @@ articulos_frec <- canastas_nest %>%
     mutate(prop = n / num_canastas) %>%
     arrange(desc(n))
 DT::datatable(articulos_frec %>%
-    mutate_if(is.numeric, funs(round(., 3))))
+    mutate_if(is.numeric, ~ round(.x, 3)))
 qplot(articulos_frec$prop, binwidth = 0.01) + 
     xlab("Proporción de canastas") + ylab("Número de artículos")
 ```
@@ -94,7 +94,7 @@ Un primer análisis que podríamos considerar es
 el de canastas **completas** que ocurren frecuentemente. ¿Qué tan
 útil crees que puede ser este análisis?
 
-```{r colapsar, warning=FALSE}
+```{r colapsar}
 colapsar_canasta <- function(x, sep = '-'){
   # convierte cada canasta a una cadena
   x %>% as.character %>% sort %>% paste(collapse = '-')
@@ -112,7 +112,7 @@ Y aquí vemos las canastas más frecuentes:
 
 ```{r}
 DT::datatable(canastas_conteo %>% head(n = 100) %>%
-    mutate_if(is.numeric, funs(round(., 4))))
+    mutate_if(is.numeric, ~ round(.x, 4)))
 ```
 
 Hay algunas canastas (principalmente canastas que contienen solo
@@ -182,7 +182,7 @@ Veamos algunos conjuntos frecuentes de tamaño $1$:
 ```{r, message = FALSE, collapse = TRUE}
 ap_1 <- subset(ap, size(ap) == 1) 
 length(ap_1)
-inspect(sort(ap_1, by='support')[1:10]) 
+sort(ap_1, by = 'support') %>% head(10) %>% DATAFRAME
 ```
 
 Algunas de tamaño $2$ y $3$:
@@ -190,13 +190,13 @@ Algunas de tamaño $2$ y $3$:
 ```{r, message = FALSE, collapse = TRUE}
 ap_2 <- subset(ap, size(ap) == 2)
 length(ap_2)
-inspect(sort(ap_2, by='support')[1:10])
+sort(ap_2, by = 'support') %>% head(10) %>% DATAFRAME
 ```
 
 ```{r, collapse = TRUE}
 ap_3 <- subset(ap, size(ap) == 3)
 length(ap_3)
-inspect(sort(ap_3, by='support')[1:5])
+sort(ap_3, by='support') %>% head %>% DATAFRAME
 ```
 
 También podemos ver qué itemsets incluyen algún producto particular,
@@ -205,13 +205,13 @@ por ejemplo
 ```{r berries, collapse = TRUE}
 ap_berries <- subset(ap, items %pin% 'berries')
 length(ap_berries)
-inspect(sort(ap_berries, by ='support')[1:4])
+sort(ap_berries, by ='support') %>% head %>% DATAFRAME
 ```
 
 ```{r soda, collapse = TRUE}
 ap_soda <- subset(ap, items %pin% 'soda')
 length(ap_soda)
-inspect(sort(ap_soda, by ='support')[1:5])
+sort(ap_soda, by ='support') %>% head %>% DATAFRAME
 ```
 
 ---
@@ -414,11 +414,11 @@ Por ejemplo, si los items son 1-camisa, 2-pantalones, 3-chamarra, podríamos ten
 Y podemos inventar una conjunta para todas las canastas, por ejemplo
 
 ```{r, echo=FALSE}
-combs <- expand.grid(p = c(0,1), c = c(0,1), ch = c(0,1))
-set.seed(280)
+combs <- crossing(p = c(0, 1), c = c(0, 1), ch = c(0, 1))
 probs <- combs
-x <-  c(0, rpois(7, 4)^2)
-probs$prob <- round(x/sum(x),3)
+# fijar algunos números  
+x <-  c(0, 9, 16, 16, 16, 16, 9, 4)
+probs$prob <- round(x / sum(x), 3)
 probs
 ```
 
@@ -427,9 +427,9 @@ que nos interese. Por ejemplo, la probabilidad de que alguien compre
 una camisa dado que compró un pantalón es:
 
 ```{r}
-prob_cp <- filter(probs, p ==1 & c==1) %>% pull(prob) %>% sum
-prob_p <- filter(probs, p==1) %>% pull(prob) %>% sum
-prob_cp/prob_p
+prob_cp <- filter(probs, p == 1 & c == 1) %>% pull(prob) %>% sum
+prob_p <- filter(probs, p == 1) %>% pull(prob) %>% sum
+(prob_cp / prob_p) %>% round(2)
 ```
 
 ---
@@ -474,13 +474,13 @@ simple. Primero definimos una función para simular canastas con probabilidades
 dadas para los artículos
 
 ```{r, results=FALSE, messages=FALSE, warning=FALSE}
-simular_transacciones <- function(nItems, nTrans, iprob){
-  etiquetas <- 1:nItems
-  if(!is.null(names(iprob))) {
-    etiquetas <- names(iprob)
+simular_transacciones <- function(n_items, n_trans, prob){
+  etiquetas <- 1:n_items
+  if(!is.null(names(prob))) {
+    etiquetas <- names(prob)
   }
-  trans <- lapply(1:nTrans, function(i){
-      etiquetas[which(rbinom(nItems, 1, prob = iprob) == 1)]
+  trans <- lapply(1:n_trans, function(i){
+      etiquetas[which(rbinom(n_items, 1, prob = prob) == 1)]
   })
   trans
 }
@@ -491,11 +491,10 @@ Y ahora simulamos usando las proporciones que encontramos en el conjunto *Grocer
 ```{r}
 set.seed(1299)
 probs_items <- sort(itemFrequency(Groceries))
-trans <- simular_transacciones(nItems = 169, nTrans = 10000, 
-                               iprob = probs_items)
-ap_indep <- apriori(trans, parameter = 
-                       list(support=0.005, target='frequent itemsets'),
-                       control = list(verbose = FALSE))
+trans <- simular_transacciones(n_items = 169, n_trans = 10000, prob = probs_items)
+ap_indep <- apriori(trans, 
+                    parameter = list(support = 0.005, target = "frequent itemsets"),
+                    control = list(verbose = FALSE))
 ```
 
 Por ejemplo, aquí vemos algunos pares frecuentes encontrados por el algoritmo:
@@ -511,29 +510,28 @@ encontradas para los datos reales, contra 10 simulaciones de este modelo:
 
 
 ```{r}
-sims <- lapply(1:10, function(i){
-  trans <- simular_transacciones(nItems = 169, 
-                               nTrans = 10000, 
-                               iprob = probs_items)
-  ap_indep <- apriori(trans, parameter = 
-                       list(support=0.005, target='frequent itemsets'),
-                       control = list(verbose = FALSE))
-  df <- data.frame(table(size(ap_indep)))
-  df$rep <- i
-  df
+# parámetros de apriori
+pars <- list(supp = 0.005, target='frequent itemsets')
+# producir 10 simulaciones
+replicaciones <- map(1:10, function(i){
+  trans <- simular_transacciones(n_items = 169, n_trans = 10000, prob = probs_items)
+  ap_indep <- apriori(trans, parameter = pars, control = list(verbose = FALSE))
+  conteos <- table(size(ap_indep))
+  tibble(rep = i, long = names(conteos), n = conteos)
 })
-
+reps_tbl <- bind_rows(replicaciones)
 ```
 
 Ahora vamos a comparar con el análisis de las canastas reales:
 
 ```{r, warning = FALSE}
-df_sims <- bind_rows(sims)
-pars <- list(supp = 0.005, target='frequent itemsets')
+# calcular observados
 ap <- apriori(lista_mb, parameter = pars, control = list(verbose = FALSE))
-df_obs <- data.frame(table(size(ap)))
-ggplot(df_sims, aes(x=Var1, y=Freq)) + geom_point() +
-  geom_point(data = df_obs, colour = 'red') + labs(x = 'Tamaño')
+conteos_obs <- table(size(ap))
+obs_tbl <- tibble(long = names(conteos_obs), n = conteos_obs)
+ggplot(reps_tbl, aes(x = long, y = n)) + geom_jitter() +
+  geom_point(data = obs_tbl, colour = 'red', size = 3) + 
+  labs(x = 'Tamaño')
 ```
 
 Y vemos claramente que el modelo simple está lejos de ajustar los datos que observamos en
@@ -622,13 +620,12 @@ inspect(reglas[1:10,])
 En la siguiente tabla, *lhs.support* es el soporte del antecedente (lhs = left hand side). Agregamos también el error estándar de la estimación de confidence (que es una proporción basada en el número de veces que se observa el antecedente):
 
 ```{r}
-df_1 <- sort(reglas, by = 'confidence') %>%
-        DATAFRAME 
+df_1 <- sort(reglas, by = 'confidence') %>% DATAFRAME 
 df_2 <- df_1 %>% select(LHS, RHS, lhs.support, confidence, support) %>%
   head(100) %>%
-  mutate(lhs.base = num_canastas*lhs.support) %>%
-  mutate(conf.ee = sqrt(confidence*(1-confidence)/lhs.base)) %>%
-  mutate_if(is.numeric, funs(round(., 2))) 
+  mutate(lhs.base = num_canastas * lhs.support) %>%
+  mutate(conf.ee = sqrt(confidence * (1 - confidence) / lhs.base)) %>%
+  mutate_if(is.numeric, ~ round(.x, 2)) 
 DT::datatable(df_2 %>% select(-lhs.base))
 ```
 
@@ -694,8 +691,7 @@ la ocurrencia de los itemsets $I$ y $j$.
 
 #### Ejemplo {-}
 ```{r, message=FALSE, results=FALSE}
-df_1 <- sort(reglas, by = 'lift') %>%
-        DATAFRAME 
+df_1 <- sort(reglas, by = 'lift') %>% DATAFRAME 
 ```
 
 En esta tabla, *lhs.support* es el soporte del antecedente (lhs = left hand side):
@@ -703,7 +699,7 @@ En esta tabla, *lhs.support* es el soporte del antecedente (lhs = left hand side
 ```{r}
 df_2 <- df_1 %>% select(LHS, RHS, lhs.support, lift, confidence, support) %>%
   head(100) %>%
-  mutate_if(is.numeric, funs(round(., 2))) 
+  mutate_if(is.numeric, ~ round(.x, 2)) 
 DT::datatable(df_2)
 ```
 
@@ -774,12 +770,12 @@ todos los valores teóricos de lift son $1$*:
 
 
 ```{r}
-sims_reglas <- lapply(1:10, function(i){
-  trans <- simular_transacciones(nItems = 169, 
-      nTrans = 10000, iprob = probs_items)
+pars <- list(support=0.002, confidence = 0.0, target='rules', 
+             ext = TRUE, minlen = 2)
+sims_reglas <- map(1:10, function(i){
+  trans <- simular_transacciones(n_items = 169, n_trans = 10000, prob = probs_items)
   ap_random <- apriori(trans, 
-      parameter = list(support=0.002, confidence = 0.0, 
-                     target='rules', ext = TRUE, minlen = 2),
+      parameter = pars,
       control = list(verbose = FALSE))
   ap_random
 })
