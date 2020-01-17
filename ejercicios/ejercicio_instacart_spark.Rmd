@@ -1,0 +1,168 @@
+---
+title: "Prueba de Spark"
+output: html_notebook
+---
+
+
+```{r, message=FALSE}
+library(tidyverse)
+library(sparklyr)
+library(arrow)
+```
+
+Abrimos una conexión local de spark:
+
+```{r}
+config <- spark_config()
+# configuración para modo local, ajustar la memoria del driver solamente
+config$`sparklyr.shell.driver-memory` <- "6G"
+sc <- spark_connect(master = "local", config = config)
+sc$config
+```
+
+
+```{r, engine = 'bash'}
+head -5 ../datos/instacart-kaggle/order_products__train.csv
+wc -l ../datos/instacart-kaggle/order_products__train.csv
+```
+
+
+```{r}
+instacart_df <- spark_read_csv(sc, 'instacart', 
+                path='../datos/instacart-kaggle/order_products__train.csv',
+                memory = FALSE,
+                repartition = 24,
+                overwrite = TRUE) %>%
+                select(order_id, product_id, add_to_cart_order, reordered)
+instacart_df %>% head(10)
+```
+
+Calculamos productos más frecuentes
+
+```{r}
+productos_tbl <- read_csv("../datos/instacart-kaggle/products.csv")            
+prods_frec <- instacart_df %>% 
+  group_by(product_id) %>%
+  tally() %>% collect() %>% 
+  arrange(desc(n)) %>% 
+  left_join(productos_tbl)            
+DT::datatable(prods_frec %>% head(1000))
+```
+
+
+Agrupamos las canastas 
+
+```{r}
+canastas_tbl <- instacart_df %>% 
+            group_by(order_id) %>%
+            summarise(canasta = collect_list(product_id)) 
+num_transacciones <- canastas_tbl %>% tally
+num_transacciones
+```
+
+
+Podemos invocar el algoritmo FPGrowth implementado en spark (ver http://www.borgelt.net/doc/fpgrowth/fpgrowth.html, https://github.com/longhowlam/BitsAndPieces, )
+
+
+
+```{r}
+modelo_fp <- ml_fpgrowth(canastas_tbl, 
+                      items_col='canasta', 
+                      min_confidence = 0.10,
+                      min_support = 0.001)
+```
+
+
+```{r rules}
+reglas <- modelo_fp %>% ml_association_rules()
+```
+
+
+
+```{r}
+productos_list <- productos_tbl$product_name
+names(productos_list) <- productos_tbl$product_id
+
+obtener_nombres <- function(x){
+    productos_list[unlist(x)] %>%
+    paste(collapse = '-') 
+}
+reglas_tbl <- reglas %>% collect() %>% 
+          mutate(antecedent = map_chr(antecedent, obtener_nombres)) %>%
+          mutate(consequent = map_chr(consequent, obtener_nombres)) %>% 
+          arrange(desc(lift))
+DT::datatable(reglas_tbl)
+```
+
+```{r, fig.width=10, fig.height=8, warning = FALSE}
+library(tidygraph)
+library(ggraph)
+reglas_tbl$weight <- log(reglas_tbl$lift)
+reglas_tbl_filt <- reglas_tbl %>% rename(from = antecedent, to = consequent)  %>% 
+  filter(lift > 5, confidence > 0.10)
+reglas_binarias <- filter(reglas_tbl_filt, !str_detect(from , "-")) %>% 
+  mutate(from = str_replace(from, "Organic", "O")) %>% 
+  mutate(to = str_replace(to, "Organic", "O")) 
+graph_1 <- as_tbl_graph(reglas_binarias) %>%
+  mutate(centrality = centrality_degree(mode = "all")) 
+
+ggraph(graph_1, layout = "igraph", algorithm ="graphopt") +
+  geom_edge_link(aes(alpha=0.5), 
+                 colour = 'red',
+                 arrow = arrow(length = unit(4, 'mm'))) + 
+  geom_node_point(aes(size = centrality, colour = centrality)) + 
+  geom_node_text(aes(label = name), size=3,
+                 colour = 'gray20', repel=TRUE) +
+  theme_graph()
+```
+
+Podemos hacer queries de las reglas como sigue. Primero
+creamos 2 órdenes:
+
+```{r}
+#28204	89632	Organic Fuji Apple
+df <- tibble(order = c(1,  2, 2), 
+             product_id = c(35221,  31717, 26209))
+df <- df %>% left_join(productos_tbl, by = "product_id") %>% 
+  select(order, product_id, product_name) %>% 
+  mutate(product_id = as.integer(product_id))
+df
+```
+
+Copiamos a spark:
+
+```{r}
+articulos_observados <- sdf_copy_to(sc, df, overwrite = TRUE) %>% 
+  group_by(order) %>% 
+  summarise(canasta = collect_list(product_id))
+```
+
+Y hacemos predicciones:
+
+```{r}
+preds_tbl <- modelo_fp %>% ml_transform(articulos_observados) 
+```
+
+
+```{r}
+preds <- preds_tbl %>% mutate(prediction = explode(prediction)) %>% collect()
+preds <- left_join(preds, productos_tbl %>% mutate(prediction = product_id))
+```
+
+Sugerencias para orden 1:
+
+```{r}
+print("Orden 1:")
+df %>% filter(order ==1) %>% pull(product_name)
+print("Recomendaciones:")
+preds %>% select(order, product_name) %>% filter(order == 1) %>% pull(product_name)
+```
+
+Sugerencias para orden 2:
+
+```{r}
+print("Orden 2:")
+df %>% filter(order ==2) %>% pull(product_name)
+print("Recomendaciones:")
+preds %>% select(order, product_name) %>% filter(order == 2) %>% pull(product_name)
+```
