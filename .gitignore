@@ -4,3 +4,4 @@ notas/_bookdown_files/
 .netlify/
 notas/_book/
 notas/*.rds
+*logs/
