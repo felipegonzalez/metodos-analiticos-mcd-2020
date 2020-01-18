@@ -11,7 +11,7 @@ RUN apt-get update \
 RUN apt-get update && apt-get install -y --no-install-recommends \
 	build-essential python3 python3-dev python3-wheel \
 	libpython3-dev python3-virtualenv \
-        python3-pip libssl-dev libffi-dev apt-utils
+    python3-pip libssl-dev libffi-dev apt-utils
 
 #Instalar apache arrow
 RUN apt-get update && \
@@ -39,9 +39,8 @@ RUN sudo apt update && \
     sudo apt install -y -V libparquet-glib-dev
 
 
+## Prepara environment de python
 RUN python3 -m virtualenv --python=/usr/bin/python3 ${PYTHON_VENV_PATH}
-
-## Prepara environment
 RUN chown -R rstudio:rstudio ${WORKON_HOME}
 ENV PATH ${PYTHON_VENV_PATH}/bin:${PATH}
 ## And set ENV for R! It doesn't read from the environment...
@@ -84,5 +83,5 @@ RUN install2.r --error \
 
 RUN install2.r --error tm text2vec textrank \
      tidytext textreuse \
-     ggraph
+     ggraph here
 
