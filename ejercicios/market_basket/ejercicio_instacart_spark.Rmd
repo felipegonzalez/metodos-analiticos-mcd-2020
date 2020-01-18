@@ -22,14 +22,14 @@ sc$config
 
 
 ```{r, engine = 'bash'}
-head -5 ../datos/instacart-kaggle/order_products__train.csv
-wc -l ../datos/instacart-kaggle/order_products__train.csv
+head -5 ../../datos/instacart-kaggle/order_products__train.csv
+wc -l ../../datos/instacart-kaggle/order_products__train.csv
 ```
 
 
 ```{r}
 instacart_df <- spark_read_csv(sc, 'instacart', 
-                path='../datos/instacart-kaggle/order_products__train.csv',
+                path='../../datos/instacart-kaggle/order_products__train.csv',
                 memory = FALSE,
                 repartition = 24,
                 overwrite = TRUE) %>%
@@ -40,7 +40,7 @@ instacart_df %>% head(10)
 Calculamos productos más frecuentes
 
 ```{r}
-productos_tbl <- read_csv("../datos/instacart-kaggle/products.csv")            
+productos_tbl <- read_csv("../../datos/instacart-kaggle/products.csv")            
 prods_frec <- instacart_df %>% 
   group_by(product_id) %>%
   tally() %>% collect() %>% 
