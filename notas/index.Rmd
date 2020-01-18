@@ -15,23 +15,61 @@ description: "Notas para métodos analíticos 2019"
 
 # Introducción {-}
 
-Este curso trata sobre varias técnicas de análisis de datos diseñadas
-para escalar datos grandes. El enfoque del curso se concentra más en el entendimiento y aplicación de los algoritmos y los métodos, y menos en la tecnología para implementarlos. 
+Este curso trata sobre diversas técnicas de análisis de datos, en su mayoría diseñadas
+para escalar a datos grandes. El enfoque del curso se concentra más en el entendimiento y 
+aplicación de los algoritmos y los métodos, y menos en las herramientas para implementarlos. 
 
 ## Temario {-}
 
 1. Análisis de conjuntos frecuentes
-2. Similitud: búsqueda de elementos similares (minhashing) 
-3. Similitud: Hashing sensible a la localidad (Locality sensitive hashing)
-4. Procesamiento de flujos de datos: filtrado, conteo.
-5. Sistemas de recomendación
-6. Análisis de redes y pagerank
-7. Minería de textos
-8. Modelos de lenguaje y aplicaciones
-9. Publicidad en línea, adwords
+    - Algoritmo a-priori
+    - Market basket analysis
+2. Búsqueda de elementos similares 1
+    - Minhashing para documentos
+3. Búsqueda de elementos similares 2
+    - Locality Sensitive Hashing (LSH)
+4. Aplicaciones de LSH
+    - Joins de similitud aproximados 
+5. Procesamiento de flujos de datos
+    - Selección de muestras y hashing
+    - Filtro de Bloom
+6. Conteo probabilístico
+    - Algoritmo de Flajolet-Martin
+    - Hyperloglog
+7. Sistemas de recomendación 1
+    - Recomendación por contenido y filtros colaborativos
+    - Factorización de matrices y Dimensiones latentes
+8. Sistemas de recomendación 2
+    - Métodos basados en similitud
+    - Mínimos cuadrados alternados
+9. Sistemas de recomendación 3 
+    - Descenso en gradiente estocástico
+    - Sistemas para retroalimentación implícita
+10. Análisis de redes 1
+    - Medidas de centralidad y pagerank
+11. Análisis de redes 2
+    - Clustering y comunidades
+11. Modelos de lenguaje 1
+    - N-gramas y conteos
+    - Aplicaciones
+12. Modelos de lenguaje 2
+    - Representación de palabras (embeddings)
+    - Modelos de redes neuronales
+13. Aplicaciones de modelos de lenguaje
+    - Corrección de ortografía
+    - Reconocimiento de idioma
+    - Clasificación de textos
+14. Recuperación de información
+    - Índices invertidos
+    - Modelo de espacio vectorial
+    - Normalización y similitud
+    - Indexado semántico latente
+15. Experimentación y algoritmos de tragamonedas
+    - Experimentación y contrafactuales
+    - Algoritmos de tragamonedas
+    - Tragamonedas bayesianos
 
 - Las notas del curso están R, y en algunos casos usamos python o línea de comandos. Puedes usar python también para hacer tareas y ejercicios. 
-
 
 ## Evaluación {-}
 
