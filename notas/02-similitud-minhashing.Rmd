@@ -1,0 +1,227 @@
+# Similitud y minhashing
+
+En la primera parte del curso tratamos un problema fundamental en varias tareas de análisis de datos: 
+
+- ¿Cómo medir similitud entre objetos o casos?
+- ¿Cómo encontrar vecinos cercanos en un conjunto de datos?
+- ¿Cómo hacer uniones de tablas por similitud?
+
+Algunos ejemplos son:
+
+- Encontrar documentos similares en una colección de documentos. Esto puede 
+servir para detectar
+plagio, deduplicar noticias o páginas web, hacer *matching* de datos
+de dos fuentes (por ejemplo, nombres completos de personas),
+etc. Ver por ejemplo [Google News]((https://dl.acm.org/citation.cfm?id=1242610)).
+- Encontrar usuarios similares (Netflix), en el sentido de que tienen gustos similares, o películas similares, en el sentido de qe le gustan a las mismas personas.
+- Encontrar imágenes similares en una colección grande, ver por ejemplo [Pinterest](https://medium.com/@Pinterest_Engineering/detecting-image-similarity-using-spark-lsh-and-tensorflow-618636afc939).
+- Uber: rutas similares que indican (fraude o abusos)[https://eng.uber.com/lsh/].
+- Deduplicar registros de usuarios de algún servicio (por ejemplo, beneficiarios
+de programas sociales).
+
+Estos problemas no son triviales por dos razones:
+
+- Los elementos que queremos comparar muchas veces están naturalmente representados en espacios de dimensión alta, y es relativamente costoso comparar un par (documentos, imágenes, usuarios, rutas). Muchas veces es preferible construir una representación más compacta y hacer comparaciones con las versiones comprimidas.
+- Si la colección de elementos es grande ($N$), entonces el número de pares 
+posibles es del orden de $N^2$, y no es posible hacer todas las posibles comparaciones para encontrar los elementos similares (por ejemplo, comparar
+$100$ mil documentos, con unas $10$ mil comparaciones por segundo, tardaría alrededor de $5$ días).
+
+Si tenemos que calcular *todas* las similitudes, no hay mucho qué hacer. Pero
+muchas veces nos interesa encontrar pares de similitud alta, o completar tareas
+más específicas como contar duplicados, etc. En estos casos, veremos que es
+posible construir soluciones probabilísticas aproximadas para resolver estos
+problemas de forma escalable. 
+
+Aunque veremos más adelante métricas de similitud comunes como
+la dada por la distancia euclideana o distancia coseno, por ejemplo, en 
+esta primera parte nos concentramos en discutir similitud entre
+pares de textos. Los textos los podemos ver como colecciones de palabras, o
+de manera más general, como colecciones de cadenas.
+
+
+## Similitud de conjuntos
+
+Muchos de estos problemas de similitud se pueden pensar como 
+problemas de similitud entre conjuntos. Por ejemplo, los documentos son conjuntos de palabras, pares de palabras, sucesiones de caracteres,
+una película como el conjunto de personas a las que le gustó, o una ruta
+como un conjunto de tramos, etc.
+
+Hay muchas medidas que son útiles para cuantificar la similitud entre conjuntos. Una que es popular, y que explotaremos por sus propiedades, es la similitud de Jaccard:
+
+
+```{block2, type='resumen'}
+La **similitud de Jaccard** de los conjuntos $A$ y $B$ está dada por
+
+$$sim(A,B) = \frac{|A\cap B|}{|A\cup B|}$$
+
+```
+
+Esta medida cuantifica qué tan cerca está la unión de $A$ y $B$ de su intersección. Cuanto más parecidos sean $A\cup B$ y $A\cap B$, más similares son los conjuntos. En términos geométricos, es el área de la intersección entre el área de la unión.
+
+#### Ejercicio {-}
+
+Calcula la similitud de Jaccard entre los conjuntos $A=\{5,2,34,1,20,3,4\}$
+ y $B=\{19,1,2,5\}$
+ 
+
+```{r, collapse = TRUE, warning=FALSE, message=FALSE}
+library(tidyverse)
+options(digits = 3)
+
+sim_jaccard <- function(a, b){
+    length(intersect(a, b)) / length(union(a, b))
+}
+
+sim_jaccard(c(0,1,2,5,8), c(1,2,5,8,9))
+sim_jaccard(c(2,3,5,8,10), c(1,8,9,10))
+sim_jaccard(c(3,2,5), c(8,9,1,10))
+```
+
+
+## Representación de documentos como conjuntos
+
+Hay varias maneras de representar documentos como conjuntos. Las más simples son:
+
+1. Los documentos son colecciones de palabras, o conjuntos de sucesiones de palabras de tamo $n$.
+2. Los documentos son colecciones de caracteres, o conjuntos de sucesiones de caracteres (cadenas) de tamaño $k$.
+
+
+La primera representación se llama *representación de n-gramas*, y la segunda *representación de k-tejas*.
+
+Nótese que en ambos casos podemos incluir información acerca del *orden* en el que
+ocurren las palabras o caracteres, y no solamente su ocurrencia en el documento. Esto es útil para varios problemas.
+
+Consideremos una colección de textos cortos:
+
+```{r}
+textos <- character(4)
+textos <- c("el perro persigue al gato, pero no lo alcanza", 
+            "el gato persigue al perro, pero no lo alcanza", 
+            "este es el documento de ejemplo", 
+            "el documento habla de perros, gatos, y otros animales")
+```
+
+Por ejemplo, abajo mostramos la representacion en bolsa de palabras (1-gramas) y la representación en bigramas (2-gramas) de los primeros dos documentos:
+
+```{r}
+print("Bolsa de palabras:")
+tokenizers::tokenize_ngrams(textos[1:2], n = 1) %>% map(unique)
+print("2-gramas:")
+tokenizers::tokenize_ngrams(textos[1:2], n = 2) %>% map(unique)
+```
+
+La representación en _k-tejas_ es otra posibilidad:
+
+```{r}
+calcular_tejas <- function(x, k = 2){
+  tokenizers::tokenize_character_shingles(x, n = k, lowercase = FALSE,
+    simplify = TRUE, strip_non_alpha = FALSE) %>% 
+  map(unique)
+}
+print("2-tejas:")
+calcular_tejas(textos[1:2], k = 2) %>% map(unique)
+print("4-tejas:")
+calcular_tejas(textos[1:2], k = 4) %>% map(unique)
+```
+
+
+**Observaciones**:
+1. Los _tokens_ son las unidades básicas de análisis. Los _tokens_ son palabras para los n-gramas (cuya definición no es del todo simple) y caracteres para  las k-tejas. Podrían ser también oraciones o párrafos, por ejemplo.
+2. Nótese que en ambos casos es posible hacer algo de preprocesamiento para
+obtener la representación. Transformaciones usuales son:
+  - Eliminar puntuación y/o espacios. 
+  - Convertir los textos a minúsculas.
+  - Esto incluye decisiones acerca de qué hacer con palabras compuestas (por ejemplo, con un guión), palabras que denotan un concepto (Reino Unido, por ejemplo) y otros detalles.
+3. Si lo que nos interesa principalmente
+similitud textual (no significado, o polaridad, etc.) entre documentos, entonces podemos usar $k$-tejas, con un mínimo de preprocesamiento. Esta
+representación es **simple y flexible** en el sentido de que se puede adaptar para documentos muy cortos (mensajes o tweets, por ejemplo), pero también para documentos más grandes.
+
+Por estas razones, no concentramos por el momento en $k$-tejas
+
+
+```{block2, type = 'resumen'}
+**Tejas (shingles)**
+  
+Sea $k>0$ un entero. Las $k$-tejas ($k$-shingles) de un documento d
+ es el conjunto de todas las corridas (distintas) de $k$
+caracteres sucesivos.
+
+```
+
+Es importante escoger $k$ suficientemente grande, de forma que la probabilidad de que
+una teja particular ocurra en un texto dado sea relativamente baja. Si los textos
+son cortos, entonces basta tomar valores como $k=4,5$, pues hay un total de $27^4$ tejas
+de tamaño $4$, y el número de tejas de un documento corto (mensajes, tweets) es mucho más bajo que
+$27^4$ (nota: ¿puedes explicar por qué este argumento no es exactamente correcto?)
+
+Para documentos grandes, como noticias o artículos, es mejor escoger un tamaño más grande,
+como $k=9,10$, pues en documentos largos puede haber cientos de miles
+de caracteres. Si $k$ fuera más chica entonces una gran parte de las tejas aparecerá en muchos de los documentos, y todos los documentos tendrían similitud
+alta.
+
+#### Ejemplo {-}
+Documentos textualmente similares tienen tejas similares:
+
+```{r, collapse = TRUE}
+# calcular tejas
+tejas_doc <- calcular_tejas(textos, k = 4)
+# calcular similitud de jaccard entre algunos pares
+sim_jaccard(tejas_doc[[1]], tejas_doc[[2]])
+sim_jaccard(tejas_doc[[1]], tejas_doc[[3]])
+sim_jaccard(tejas_doc[[4]], tejas_doc[[3]])
+```
+
+Podemos calcular todas las similitudes:
+
+```{r}
+tejas_tbl <- crossing(id_1 = 1:length(textos), id_2 = 1:length(textos)) %>%
+  filter(id_1 < id_2) %>% 
+  mutate(tejas_1 = tejas_doc[id_1], tejas_2 = tejas_doc[id_2])
+tejas_tbl
+```
+
+```{r}
+tejas_tbl %>% 
+  mutate(sim = map2_dbl(tejas_1, tejas_2, ~sim_jaccard(.x, .y))) %>% 
+  select(id_1, id_2, sim)
+```
+
+pero nótese que, como señalamos arriba, esta operación será muy
+costosa incluso si la colección de textos es de tamaño moderado.
+
+## Representación matricial
+
+Podemos usar una matriz binaria para guardar todas las
+representaciones en k-tejas de nuestra colección de documentos.
+
+```{r}
+dtejas_tbl <- tibble(id = paste0("doc_", 1:length(textos)), 
+    tejas = tejas_doc) %>% 
+  unnest(cols = tejas) %>% 
+  mutate(val = 1) %>% 
+  pivot_wider(names_from = id, values_from = val, values_fill = list(val = 0))
+dtejas_tbl
+```
+
+
+¿Cómo calculamos la similitud de Jaccard usando estos datos?
+
+Calcular la unión e intersección se puede hacer haciendo OR y AND de las columnas, y
+entonces podemos calcular la similitud
+```{r}
+inter_12 <- sum(dtejas_tbl$doc_1 & dtejas_tbl$doc_2)
+union_12 <- sum(dtejas_tbl$doc_1 | dtejas_tbl$doc_2)
+similitud <- inter_12/union_12
+similitud # comparar con el número que obtuvimos arriba.
+```
+
+El cálculo para todos los documentos podríamos hacerlo con:
+
+```{r}
+mat_td <- t(dtejas_tbl %>% select(-tejas) %>% as.matrix)
+1 - dist(mat_td, method = "binary")
+```
+
+
+
+
