@@ -16,5 +16,7 @@ pero si tienes problemas de reproducibilidad puedes intentarlo.
 
 - Puedes también utilizar un contenedor en Google Cloud si necesitas una computadora más grande usando la imagen: 
 
+-[Imagen de contenedor](https://hub.docker.com/repository/docker/felipexgonzalez/metodos-analiticos-2020)
+
 ```
 ```
