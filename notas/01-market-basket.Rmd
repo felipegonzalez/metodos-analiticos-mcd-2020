@@ -560,6 +560,80 @@ Y vemos que en el análisis de datos reales estamos capturando la mayor parte
 de los itemsets frecuentes del modelo independiente. Estos itemsets se explican
 por la frecuencia simple de aparición de cada artículo.
 
+## Soporte teórico y conjuntos frecuentes
+
+El tamaño de los datos de transacciones está relacionado con los mínimos
+soportes que tiene sentido analizar. Supongamos por ejemplo que
+tenemos un conjunto de $n$ transacciones, y buscamos soporte mínimo de $s$.
+
+
+- Por ejemplo, tomar $s$ de forma que $ns=2$ no es buena idea, pues basta observar 2 transacciones de un conjunto para que el conjunto sea frecuente. Esto fácilmente puede pasar con conjuntos cuyo soporte teórico es considerablemente más bajo que $s$.
+
+
+Una manera simple de obtener una guía para escoger el mínimo $s$ se puede
+obtener con el siguiente argumento: para un $I$ fijo con soporte $s_I$, si 
+$n$ es suficientemente grande entonces podemos usar la aproximación normal
+con $E(n(I)) = ns_I$ y $var(n(I)) = ns_I(1-s_I)$. Si suponemos que nos interesa
+excluir con probabilidad mayor a 0.15 a los conjuntos $I$ tales que $s_I\leq 0.75 s,$
+entonces podemos demostrar que basta que 
+$$s\geq \frac{1}{2\sqrt{n}}$$
+**que podemos usar como guía aproximada para escoger el mínimo soporte para  un análisis dado**. Abajo mostramos una tabla de valores mínimos **sugeridos** para cada $n$:
+
+```{r}
+tibble(n = c(1e3, 1e4, 1e5, 1e6, 1e7)) %>% 
+  mutate(s_min = 0.5 / sqrt(n))
+```
+
+- Usualmente queremos hacer el soporte mínimo $s$ un poco más chico, para que
+capturemos con alta probabilidad aquellos conjuntos de soporte teórico $s$ (aunque
+esto implica también que capturaremos más conjuntos de menor soporte que el teórico).
+- La elección de punto de corte es más o menos arbitraria (lo cual es una dificultad
+del análisis de conjuntos frecuentes), pero es importante recordar que si hacemos
+$s$ mucho más chico que estas recomendaciones, capturaremos por azar muchos
+conjuntos cuya frecuencia teórica es mucho más baja de lo que esperábamos.
+
+### Ejemplo {-}
+
+Podemos experimentar con el modelo de independencia:
+
+```{r, message = FALSE}
+simular_num_reglas <- function(n_trans, prob, pars){
+  n_items <- length(prob)
+  etiquetas <- 1:n_items
+  if(!is.null(names(prob))) {
+    etiquetas <- names(prob)
+  }
+  trans <- map(1:n_trans, function(i){
+      etiquetas[which(rbinom(n_items, 1, prob = prob) == 1)]
+  })
+  ap_indep <- apriori(trans, parameter = pars, control = list(verbose = FALSE))
+  conteos <- table(size(ap_indep))
+  tibble(long = names(conteos), n = as.numeric(conteos))
+}
+# fijamos para el ejemplo
+probs_items <- sort(itemFrequency(Groceries))
+pars_1 <- list(support = 0.005, target = "frequent itemsets")
+simular_1 <- function(n_trans){
+  sim_tbl <- simular_num_reglas(n_trans = n_trans, prob = probs_items, pars = pars_1)  
+  sim_tbl
+}
+```
+
+```{r}
+set.seed(125)
+n_trans <- c(10, 25, 50, 100, 200, 400, 800,1600, 3200, 6400, 12800)
+reps <- tibble(n_trans = rep(n_trans, each = 5)) %>% 
+  mutate(conteos = map(n_trans, simular_1))
+reps_long_2 <- reps %>% unnest(cols = conteos) %>% 
+  filter(long == 2)
+```
+
+```{r}
+ggplot(reps_long_2, aes(x=factor(n_trans), y = n)) + geom_boxplot() +
+  ylab("Número de conjuntos frecuentes (k=2)") +
+  xlab("Número de transacciones") + labs(subtitle = "Soporte min 0.005")
+```
+
 
 ## Reglas de asociación
 
@@ -753,12 +827,12 @@ entender conjuntos grandes de reglas.
 Un problema del análisis clásico de soporte-confianza-lift es la variabilidad
 de las estimaciones de confianza y lift.
 
-- Cuando comenzamos poniendo valores de soporte y confianza relativamente bajos, encontramos muchas reglas
+- Cuando comenzamos poniendo valores de soporte y confianza relativamente bajos, encontramos muchas reglas. Muchas de estas reglas son ruidosas (en un número más
+grande de transacciones las descalificaríamos).
 - Intentamos muchas veces filtrar u ordenar por *lift*, para considerar las reglas más interesantes
 - Sin embargo, encontramos entonces que muchas reglas de lift y/o confianza altas son aquellas que tienen soporte bajo y consecuentes poco frecuentes.  Como veremos más adelante, esto se debe muchas veces
 a error de estimación. Los valores más grandes de lift generalmente son sobreestimaciones, por la naturaleza del análisis basado en cortes.
 - Si regresamos a incrementar soporte y confianza, potencialmente perdemos reglas interesantes.
-
 
 
 Veamos cómo se comportan confianza y lift para el modelo donde no hay asociaciones. 
@@ -831,10 +905,6 @@ Tomamos por ejemplo $\delta=0.99$. De esta forma, $HL>1$ sólo cuando
 el conteo observado $n(\{i,j\})$ está en la cola superior del conteo
 bajo la hipótesis nula. Esto toma en cuenta la variabilidad de los
 conteos (que es grande en términos relativos cuando el soporte es bajo).
-
-
-
-
 
 **Observaciones**:
 
