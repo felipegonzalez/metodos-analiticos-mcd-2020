@@ -898,12 +898,12 @@ La idea básica del hyperlift es comparar el conteo $n(\{i,j\})$
 con la cola superior de la distribución de $X_{i,j}$ bajo el supuesto
 de independencia, poniendo
 
-$$HL(I\to j) = \frac{n(\{i,j\})}{Q_\delta (X_{i,j})},$$
+$$HL(I\to j) = \frac{n(\{I,j\})}{Q_\delta (X_{I,j})},$$
 
-donde $Q_\delta$ es tal que $P(X_{i,j} < Q_\delta (X_{i,j}))\approx \delta$.
+donde $Q_\delta$ es tal que $P(X_{I,j} < Q_\delta (X_{I,j}))\approx \delta$.
 Tomamos por ejemplo $\delta=0.99$. De esta forma, $HL>1$ sólo cuando
 el conteo observado $n(\{i,j\})$ está en la cola superior del conteo
-bajo la hipótesis nula. Esto toma en cuenta la variabilidad de los
+bajo la hipótesis nula de independencia. Esto toma en cuenta la variabilidad de los
 conteos (que es grande en términos relativos cuando el soporte es bajo).
 
 **Observaciones**:
