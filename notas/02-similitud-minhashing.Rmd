@@ -866,10 +866,11 @@ Usamos un primo chico para leer los resultados más fácilmente:
 
 ```{r}
 textos_dup <- c(textos,  textos[2], "este es el Documento de Ejemplo" ,
-                paste0(textos[2], '!'), 'texto diferente a todos')
+                paste0(textos[2], '!'), 'texto diferente a todos', "un gato negro",
+                "mi gato negro")
 textos_dup
 set.seed(21)
-hash_f <- map(1:12, ~ generar_hash())
+hash_f <- map(1:20, ~ generar_hash())
 tejas <- crear_tejas_str(textos_dup, k = 4)
 firmas <- calcular_firmas_doc(tejas, hash_f)
 firmas_2 <- firmas %>% 
@@ -919,15 +920,17 @@ extraer_pares <- function(candidatos, cubeta, docs, textos = NULL){
    enq_cubeta <- enquo(cubeta)
    enq_docs <- enquo(docs)
    pares <- candidatos %>% 
+    group_by(!!enq_cubeta) %>% 
     mutate(pares = map(!!enq_docs, ~ combn(sort(.x), 2, simplify = FALSE))) %>%
     select(!!enq_cubeta, pares) %>% unnest_legacy %>% 
     mutate(a = map_int(pares, 1)) %>% 
     mutate(b = map_int(pares, 2)) %>% 
-    select(-pares) %>% select(-!!enq_cubeta) %>% unique
+    select(-pares) %>% ungroup %>% select(-!!enq_cubeta) %>% 
+    unique #quitar pares repetidos
    if(!is.null(textos)){
        pares <- pares %>% mutate(texto_a = textos[a], texto_b = textos[b])
    }
-   pares
+   pares %>% ungroup 
 }
 DT::datatable(extraer_pares(candidatos, cubeta, docs, textos = textos_dup))
 ```
@@ -985,8 +988,15 @@ Ahora podemos calcular similitud exacta y agrupar:
 pares_scores <- pares_candidatos %>% 
   mutate(score = map2_dbl(texto_a, texto_b,
   ~ sim_jaccard(calcular_tejas(.x, 5), calcular_tejas(.y, 5))))
-pares_scores
+DT::datatable(pares_scores)
 ```
 
+Por ejemplo, podemos hacer clustering con las similitudes de Jaccard:
 
-
+```{r}
+library(igraph)
+pares_dis <- pares_scores %>% select(a, b, score) 
+pares_g <- graph_from_data_frame(pares_dis, directed = FALSE)
+wc <- cluster_label_prop(pares_g, weights = pares_g$score)
+wc
+```
