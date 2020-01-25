@@ -115,8 +115,7 @@ La representación en _k-tejas_ es otra posibilidad:
 ```{r}
 calcular_tejas <- function(x, k = 2){
   tokenizers::tokenize_character_shingles(x, n = k, lowercase = FALSE,
-    simplify = TRUE, strip_non_alpha = FALSE) %>% 
-  map(unique)
+    simplify = TRUE, strip_non_alpha = FALSE)
 }
 print("2-tejas:")
 calcular_tejas(textos[1:2], k = 2) %>% map(unique)
@@ -126,12 +125,15 @@ calcular_tejas(textos[1:2], k = 4) %>% map(unique)
 
 
 **Observaciones**:
+
 1. Los _tokens_ son las unidades básicas de análisis. Los _tokens_ son palabras para los n-gramas (cuya definición no es del todo simple) y caracteres para  las k-tejas. Podrían ser también oraciones o párrafos, por ejemplo.
 2. Nótese que en ambos casos es posible hacer algo de preprocesamiento para
 obtener la representación. Transformaciones usuales son:
+
   - Eliminar puntuación y/o espacios. 
   - Convertir los textos a minúsculas.
   - Esto incluye decisiones acerca de qué hacer con palabras compuestas (por ejemplo, con un guión), palabras que denotan un concepto (Reino Unido, por ejemplo) y otros detalles.
+
 3. Si lo que nos interesa principalmente
 similitud textual (no significado, o polaridad, etc.) entre documentos, entonces podemos usar $k$-tejas, con un mínimo de preprocesamiento. Esta
 representación es **simple y flexible** en el sentido de que se puede adaptar para documentos muy cortos (mensajes o tweets, por ejemplo), pero también para documentos más grandes.
@@ -197,7 +199,8 @@ representaciones en k-tejas de nuestra colección de documentos.
 ```{r}
 dtejas_tbl <- tibble(id = paste0("doc_", 1:length(textos)), 
     tejas = tejas_doc) %>% 
-  unnest(cols = tejas) %>% 
+  unnest_legacy %>% 
+  unique %>% 
   mutate(val = 1) %>% 
   pivot_wider(names_from = id, values_from = val, values_fill = list(val = 0))
 dtejas_tbl
@@ -224,4 +227,934 @@ mat_td <- t(dtejas_tbl %>% select(-tejas) %>% as.matrix)
 
 
 
+
+## Reducción probabilística de dimensionalidad
+
+Para una colección grande de documentos
+la representación binaria de la colección de documentos 
+puede tener un número muy grande de renglones. Puede ser posible
+crear un número más chico de nuevos _features_ (ojo: aquí los renglones
+son las "variables", y los casos son las columnas) con los que
+sea posible obtener una buena aproximación de la similitud.
+
+Los mapeos que usaremos son escogidos al azar, y son sobre
+el espacio de enteros.
+
+- Sea $\pi$ una permutación al azar de los renglones de la matriz.
+- Permutamos los renglones de la matriz tejas-documentos según $\pi$.
+- Definimos una nuevo descriptor, el **minhash** del documento: para cada documento (columna) $d$ de la matriz permutada, tomamos el entero $f_\pi (d)$ que da el 
+número del primer renglón que es distinto de $0$.
+
+#### Ejercicio {#ej1}
+
+Considera la matriz de tejas-documentos para cuatro documentos y cinco tejas
+dada a continuación, con las permutaciones $(2,3,4,5,1)$ (indica que el renglón
+$1$ va al $2$, el $2$ a $3$, el $5$ al $1$, etc.) y $(2,5,3,1,4)$. Calcula el descriptor definido arriba.
+
+```{r, echo = FALSE}
+mat <- matrix(c(c(1,0,0,1), c(0,0,1,0), 
+            c(0,1,0,1), c(1,0,1,1),
+            c(0,0,1,0)), nrow = 5, ncol = 4, byrow = TRUE)
+colnames(mat) <- c('d_1','d_2','d_3','d_4')
+rownames(mat) <- c('abc', 'ab ','xyz','abx','abd')
+mat
+```
+
+
+#### Ejemplo {-}
+
+Ahora regresamos a nuestro ejemplo de $4$ textos chicos.
+Por ejemplo, para una permutación tomada al azar:
+
+```{r}
+set.seed(321)
+df_1 <- dtejas_tbl %>% sample_n(nrow(dtejas_tbl))
+df_1
+```
+
+Los minhashes para cada documentos con estas permutaciones son:
+
+```{r}
+df_1 %>% summarise_at(vars(matches('doc')), detect_index, ~.x == 1) 
+```
+
+Ahora repetimos con otras permutaciones:
+
+```{r}
+calc_firmas_perm <- function(df, permutaciones){
+    map(permutaciones, function(pi){
+        df_1 <- df[order(pi), ]
+        firma <- df_1 %>% summarise_at(vars(matches('doc')), detect_index, ~.x == 1)
+        firma
+    }) %>% bind_rows %>% 
+    add_column(firma = paste0('h_', 1:length(permutaciones)), .before = 1)
+}
+set.seed(32)
+num_hashes <- 12
+permutaciones <- map(as.integer(1:num_hashes), ~ sample.int(n = nrow(dtejas_tbl)))
+firmas_perms <- calc_firmas_perm(dtejas_tbl, permutaciones)
+firmas_perms
+```
+
+
+
+---
+
+A esta nueva matriz le llamamos **matriz de firmas** de los documentos.  La firma de un documento es una sucesión de enteros.
+
+Cada documento se describe ahora con `r nrow(firmas_perms)` entradas,
+en lugar de `r nrow(df_1)`.
+
+Nótese que por construcción, cuando dos documentos son muy similares,
+es natural que sus columnas de firmas sean similares, pues la mayor parte
+de los renglones de estos dos documentos son $(0,0)$ y $(1,1)$.
+Resulta ser que podemos cuantificar esta probabilidad. Tenemos el siguiente
+resultado simple pero sorprendente:
+
+```{block2, type = 'resumen'}
+Sea $\pi$ una permutación escogida al azar, y $a$ y $b$ dos columnas
+dadas. Entonces
+$$P(f_\pi(a) = f_\pi(b)) = sim(a, b)$$
+donde $sim$ es la similitud de Jaccard basada en las tejas usadas.
+Sean $\pi_1, \pi_2, \ldots \pi_n$ permutaciones escogidas al azar de
+manera independiente. Si $n$ es grande, entonces por la ley de los grandes números
+$$sim(a,b) \approx \frac{|\pi_j : f_{\pi_j}(a) = f_{\pi_j}(b)|}{n},$$
+es decir, la similitud de Jaccard es aproximadamente la proporción 
+de elementos de las firmas que coinciden.
+```
+
+
+### Ejemplo {-}
+
+Antes de hacer la demostración, veamos como aplicaríamos a la matriz
+de firmas que calculamos arriba. Tendríamos, por ejemplo :
+
+```{r, collapse = TRUE}
+mean(firmas_perms$doc_1 == firmas_perms$doc_2)
+mean(firmas_perms$doc_1 == firmas_perms$doc_3)
+mean(firmas_perms$doc_3 == firmas_perms$doc_4)
+```
+
+que comparamos con las similitudes de Jaccard
+
+```{r}
+sim_jaccard(tejas_doc[[1]], tejas_doc[[2]])
+sim_jaccard(tejas_doc[[1]], tejas_doc[[3]])
+sim_jaccard(tejas_doc[[4]], tejas_doc[[3]])
+```
+
+Ahora veamos qué sucede repetimos varias veces:
+
+```{r, collapse = TRUE}
+num_hashes <- 12
+firmas_rep <- map(1:50, function(i){
+    perms <- map(1:num_hashes, sample, x = 1:nrow(dtejas_tbl), size = nrow(dtejas_tbl))
+    df_out <- calc_firmas_perm(dtejas_tbl, perms)    
+    df_out$rep <- i
+    df_out
+})
+  
+map_dbl(firmas_rep, ~ mean(.x$doc_1 == .x$doc_2))  %>% 
+    quantile(c(0.1, 0.5, 0.9)) %>% round(2)
+map_dbl(firmas_rep, ~ mean(.x$doc_3 == .x$doc_4))  %>% 
+    quantile(c(0.1, 0.5, 0.9)) %>% round(2)
+```
+
+Que indica que nuestro procedimiento da estimaciones razonables
+de las similitudes de Jaccard.
+
+*Observación*: si la similitud de dos documentos es cero, entonces
+este procedimiento siempre da la respuesta exacta. ¿Por qué?
+
+---
+
+Ahora damos un argumento para demostrar este resultado.
+Consideremos dos columnas $a,b$ de la matriz
+de 0's y 1's, con conjuntos de tejas asociados $A,B$.
+
+- Permutamos los reglones de las dos columnas $a$ y $b$.
+- Sea $k$ la posición donde aparece el primer $(0,1)$, $(1,0)$ o $(1,1)$.
+- Hay tantos renglones $(1,1)$ como elementos en $A\cap B$. Y hay tantos
+renglones  $(0,1)$, $(1,0)$ o $(1,1)$ como elementos en $A\cup B$.
+- Todos estos $|A\cup B|$ reglones tienen la misma probabilidad de aparecer
+en la posición $k$.
+- Entonces, la probabilidad condicional de que el renglón $k$ sea de tipo $(1,1)$, dado que es de algún tipo de $(1,0), (0,1), (1,1)$, es 
+$$\frac{|A\cap B|}{|A\cup B|},$$
+que es la similitud de Jaccard de los dos documentos.
+
+
+
+
+
+
+## Algoritmo para calcular la matriz de firmas
+
+El primer problema con el procedimiento de arriba es el costo de calcular las permutaciones y permutar la matriz característica (tejas-documentos). 
+Generalmente no queremos hacer esto, pues el número de tejas es grande.
+
+Escribimos un algoritmo para hacer el cálculo de la matriz
+de firmas dado que
+tenemos las permutaciones, sin permutar la matriz y recorriendo
+por renglones. 
+
+Supongamos que tenemos $h_1,\ldots, h_k$ permutaciones. Denotamos por $SIG_{i,c}$ el elemento de la matriz de
+firmas para la $i$-ésima permutación y el documento $c$.
+
+
+```{block2, type='resumen'}
+**Cálculo de matriz de firmas**
+  Inicializamos la matriz de firmas como $SIG_{i,c}=\infty$. Para cada
+renglón $r$ de la matriz original:
+  - Para cada columna $c$:
+      1. Si $c$ tiene un cero en el renglón $r$, no hacemos nada.
+      2. Si $c$ tiene un uno en el renglón $r$, ponemos para cada $i$
+            $$SIG_{i,c} = \min\{SIG_{i,c}, h_i(r)\}.$$
+```
+
+#### Ejercicio {-}
+Aplicar este algoritmo al ejercicio \@ref(ej1).
+
+---
+
+### Ejemplo {-}
+
+Consideramos el ejemplo que vimos y hacemos una implementación simple del algoritmo
+de arriba:
+
+```{r}
+df <- as.data.frame(dtejas_tbl)
+mat_df <- df %>% column_to_rownames('tejas') %>% as.matrix
+calc_firmas <- function(mat_df, permutaciones){
+    num_hashes <- length(permutaciones)
+    firmas <- matrix(Inf, ncol = ncol(mat_df), nrow = num_hashes)
+    for(r in 1:nrow(mat_df)){
+        indices <- mat_df[r, ] > 0
+        firmas[, indices] <- pmin(firmas[, indices], map_int(permutaciones, r))
+    }
+    firmas
+}
+firmas_2 <- calc_firmas(mat_df, permutaciones)
+firmas_2
+```
+
+
+
+
+## Funciones hash
+
+El siguiente defecto que tiene nuestro algoritmo hasta ahora
+es que es necesario simular
+y almacenar las distintas permutaciones (quizá usamos cientos, para estimar
+con más precisión las similitudes) que vamos a utilizar. Estas permutaciones
+son relativamente grandes y quizá podemos encontrar una manera más rápida de "simular"
+las permutaciones.
+
+
+### Ejercicio{-}
+En nuestro ejemplo anterior, tenemos $107$ tejas. Consideramos una funciones de
+la forma (como se sugiere en [@mmd]):
+
+$$h(x) = ax + b \bmod 107$$
+donde escogemos $a$ al azar entre 1 y 106, y $b$ se escoge al azar
+entre $0$ y $106$. ¿Por qué es apropiada una función de este tipo?
+
+- Demuestra primero que
+la función $h(x)$ es una permutación de los enteros $\{ 0,1,\ldots, 106 \}$. Usa el
+hecho de que $107$ es un número primo. 
+- Si escogemos $a, b$ al azar, podemos generar distintas permutaciones.
+- Esta familia de funciones no dan todas las posibles permutaciones, pero
+pueden ser suficientes para nuestros propósitos, como veremos más adelante.
+
+**Observación**: si $p$ no es primo, nuestra familia tiene el defecto de que
+algunas funciones pueden nos ser permutaciones. Por ejemplo,
+si 
+$$h(x) = 4x + 1 \bmod 12,$$
+entonces $h$ mapea el rango $\{0,1,\ldots, 11\}$ a
+```{r}
+h <- function(x){  (4*x +1) %% 12}
+h(0:11)
+```
+
+---
+
+### Ejemplo {-}
+
+Vamos a resolver nuestro problema simple usando funciones hash como las del ejercicio anterior
+
+```{r}
+num_renglones <- nrow(mat_df)
+hash_simple <- function(primo){
+  a <- sample.int(primo - 1, 2)
+  hash_fun <- function(x) {
+        # restamos y sumamos uno para mapear a enteros positivos
+        ((a[1]*(x-1) + a[2]) %% primo) + 1
+    }
+  hash_fun
+}
+set.seed(132)
+hash_f <- map(1:2, ~ hash_simple(primo = 107))
+```
+
+Podemos examinar algunas de estas funciones:
+```{r}
+hash_f[[1]](1:107)
+hash_f[[1]](1:107) %>% duplicated %>% any
+hash_f[[2]](1:107) %>% duplicated %>% any
+```
+
+
+
+Reescribimos nuestra función *calc_firmas* para usar las funciones
+hash en lugar de permutaciones:
+
+```{r}
+calc_firmas_hash <- function(mat_df, hash_f){
+    num_hashes <- length(hash_f)
+    firmas <- matrix(Inf, ncol = ncol(mat_df), nrow = num_hashes)
+    for(r in 1:nrow(mat_df)){
+        indices <- mat_df[r, ] > 0
+        firmas[, indices] <- pmin(firmas[, indices], map_dbl(hash_f, ~.(r)))
+    }
+    firmas
+}
+```
+
+
+```{r}
+set.seed(2851)
+hash_f <- map(1:12, ~ hash_simple(primo = 107))
+firmas_2 <- calc_firmas_hash(mat_df, hash_f)
+firmas_2
+mean(firmas_2[,1]==firmas_2[,2])
+mean(firmas_2[,1]==firmas_2[,3])
+mean(firmas_2[,3]==firmas_2[,4])
+```
+
+
+
+Cuando el número de tejas no exactamente un primo, hacemos lo siguiente:
+
+```{block2, type = 'resumen'}
+**Hash de tejas numeradas**
+    
+ Supongamos que tenemos $\{0,1,\ldots, m-1\}$ tejas numeradas. Seleccionamos un
+primo $p\geq m$, y definimos las funciones
+$$H =\{ h_{a,b}(x) = (ax + b) \bmod p \}$$
+En lugar de escoger una permutación al azar, escogemos
+$a \in \{1,\cdots, p-1\}$, y $b \in \{0,\cdots, p-1\}$ al azar. Usamos
+en el algoritmo estas funciones $h_i$ como si fueran permutaciones.
+```
+
+**Observación**: El único detalle que hay que observar aquí es que los valores hash o cubetas
+a donde se mapean las tejas ya no están en el rango $\{0,1,\ldots, m-1\}$ , de manera
+que no podemos interpretar como permutaciones. Pero pensando un poco vemos 
+no hay ninguna razón para interpretar los valores
+de $h_i(r)$ como renglones de una matriz permutadas, y no necesariamente
+$h_i$ tiene que ser una permutación de los renglones. $h_i$ puede ser una
+función que mapea renglones (tejas) a un rango grande de enteros, de forma
+que la probabilidad de que distintos renglones sean mapeados a un mismo hash 
+sea muy baja.
+
+Obtener el minhash es simplemente encontrar el mínimo entero de los valores hash
+que corresponden a tejas que aparecen en cada columna.
+
+
+### Ejemplo {-}
+
+```{r}
+set.seed(28511)
+hash_f <- map(1:12, ~ hash_simple(primo = 883))
+firmas <- calc_firmas_hash(mat_df, hash_f)
+firmas
+mean(firmas[,1]==firmas[,2])
+mean(firmas[,1]==firmas[,3])
+mean(firmas[,3]==firmas[,4])
+```
+
+
+
+
+
+### Funciones hash: discusión {-}
+
+En consecuencia, como solución general para nuestro problema de minhashing podemos seleccionar un primo $p$ muy grande y utiliar la familia de congruencias $ax+b\bmod p$, seleccionando
+$a$ y $b$ al azar (ver [implementación de Spark](https://github.com/apache/spark/blob/v2.1.0/mllib/src/main/scala/org/apache/spark/ml/feature/MinHashLSH.scala), donde se utiliza un primo fijo MinHashLSH.HASH_PRIME) .
+
+Otro enfoque es hacer hash directamente de las tejas (caracteres).
+En este caso, buscamos una función
+hash de cadenas a enteros grandes que "revuelva" las cadenas a un rango
+grande de enteros. 
+Es importante la calidad de la función hash, pues no queremos tener demasiadas
+colisiones aún cuando existan patrones en nuestras tejas.
+
+Por ejemplo,
+podemos utilizar la función *hash_string* del paquete textreuse [@R-textreuse] (implementada
+en C++):
+
+```{r, collapse = TRUE}
+textreuse::hash_string('a')
+textreuse::hash_string('b')
+textreuse::hash_string('El perro persigue al gato') 
+textreuse::hash_string('El perro persigue al gat') 
+``` 
+
+Para obtener otras funciones hash, podemos usar una técnica distinta. Escogemos
+al azar un entero, y hacemos bitwise xor con este entero al azar. 
+En laa implementación de *textreuse*, por ejemplo, se hace:
+
+```{r}
+set.seed(123)
+generar_hash <- function(){
+    r <- as.integer(stats::runif(1, -2147483648, 2147483647))
+    funcion_hash <- function(x){
+        bitwXor(textreuse::hash_string(x), r)    
+    }
+    funcion_hash
+}
+h_1 <- generar_hash()
+h_2 <- generar_hash()
+h_1("abcdef")
+h_2("abcdef")
+```
+
+Otra opción es utilizar como función básica otra función hash estándar, como *murmur32*
+o *xxhash32* (la segunda es más rápida que la primera), que también pueden
+recibir semillas para obtener distintas funciones:
+
+```{r}
+set.seed(123)
+generar_hash <- function(){
+    r <- as.integer(stats::runif(1, 1, 2147483647))
+    funcion_hash <- function(shingles){
+        hash_valor <- 
+          map_chr(shingles, ~ digest::digest2int(.x, seed =r))
+          #map_chr(shingles, 
+          #  ~ digest::digest(.x, algo = "xxhash32", seed = r, serialize = FALSE))
+        # convertir a entero, evitar overflow
+        #strtoi(substr(hash_hex, 2, 8), 16)
+        as.integer(hash_valor)
+    }
+    funcion_hash
+}
+h_1 <- generar_hash()
+h_2 <- generar_hash()
+h_1("abcdef")
+h_2("abcdef")
+```
+
+### Ejemplo {-}
+Usando estas funciones hash, nuestro miniejemplo se vería como sigue:
+
+```{r}
+calc_firmas_hash <- function(mat_df, hash_funs){
+    num_hashes <- length(hash_funs)
+    tejas <- rownames(mat_df)
+    firmas <- matrix(Inf, ncol = ncol(mat_df), nrow = num_hashes)
+    for(r in 1:nrow(mat_df)){
+        indices <- mat_df[r, ] > 0
+        ## se calcula los hashes de cadenas
+        hashes <- map_dbl(hash_funs, ~.(tejas[r]))
+        ## actualiar matriz de firmas
+        firmas[, indices] <- pmin(firmas[, indices], hashes)
+    }
+    firmas
+}
+set.seed(211)
+hash_f <- map(1:30, ~ generar_hash())
+firmas <- calc_firmas_hash(mat_df, hash_f)
+options(scipen=999)
+firmas
+```
+
+Y algunas similitudes son:
+
+```{r}
+mean(firmas[,1]==firmas[,2])
+mean(firmas[,1]==firmas[,3])
+mean(firmas[,3]==firmas[,4])
+```
+
+
+
+## Minhashing
+
+Ahora podemos proponer una implementación para minhashing, utilizando el
+algoritmo mostrado arriba. 
+
+Para poder procesar los datos por renglón,
+primero necesitamos organizar los datos por teja (originalmente están por documento, 
+o columna), por ejemplo:
+
+```{r}
+tejas <- calcular_tejas(textos, k = 4) %>% map(unique)
+tejas_df <- tibble(texto_id = 1:4, shingles = tejas) %>% 
+        unnest_legacy %>% 
+        mutate(shingle_n = as.numeric(factor(shingles))) %>% 
+        group_by(shingle_n) %>% select(-shingles) %>% 
+        summarise(textos = list(texto_id))
+tejas_df
+```
+
+Construimos una función para invertir:
+
+```{r}
+crear_tejas_reng <- function(textos, k = 4){
+    num_docs <- length(textos)
+    # crear tejas
+    tejas <- calcular_tejas(textos, k = k) %>% map(unique)
+    # invertir
+    tejas_df <- tibble(texto_id = 1:num_docs, shingles = tejas) %>% 
+        unnest_legacy() %>% 
+        mutate(shingle_n = as.numeric(factor(shingles))) %>% 
+        group_by(shingle_n) %>% select(-shingles) %>% 
+        summarise(textos = list(texto_id))
+    list(tejas = tejas_df$textos, num_docs = num_docs, k = k)
+}
+```
+
+Ya convertidos los tejas a números podemos usar las funciones hash modulares:
+
+```{r}
+generar_hash_mod <- function(p = 2038074743){
+    a <- sample.int(p - 1, 2)
+    hash_fun <- function(x) {
+        # restamos y sumamos uno para mapear a enteros positivos
+        ((a[1]*(x - 1) + a[2]) %% p) + 1
+    }
+    hash_fun
+}
+```
+
+Y finalmente reescribimos el algoritmo:
+
+```{r}
+calc_firmas_hash_reng <- function(tejas_obj, hash_funs){
+    num_docs <- tejas_obj$num_docs
+    # min hashing
+    num_hashes <- length(hash_funs)
+    tejas <- tejas_obj$tejas
+    firmas <- matrix(Inf, ncol = num_docs, nrow = num_hashes)
+    for(r in 1:length(tejas)){
+        # calcular hashes de teja
+        hashes <- map_dbl(hash_funs, ~.x(r))
+        # extaer documentos que contienen la teja
+        indices <- tejas[[r]]
+        # actualizar matriz
+        firmas[, indices] <- pmin(firmas[, indices], hashes)
+    }
+    firmas
+}
+```
+
+
+```{r}
+set.seed(21121)
+hash_f <- map(1:500, ~ generar_hash_mod())
+tejas_obj<- crear_tejas_reng(textos, k = 4) 
+firmas <- calc_firmas_hash_reng(tejas_obj, hash_f)
+mean(firmas[,1]==firmas[,2])
+mean(firmas[,3]==firmas[,4])
+```
+
+
+## Ejemplo: tweets 
+
+Ahora buscaremos tweets similares en una colección de un [concurso de
+kaggle](https://www.kaggle.com/rgupta09/world-cup-2018-tweets/home?utm_medium=email&utm_source=mailchimp&utm_campaign=datanotes-20180823).
+
+```{r, message=FALSE}
+ruta <- "../datos/FIFA.csv"
+gc_ruta <- "https://storage.cloud.google.com/metodos-analiticos/FIFA.csv"
+if(!file.exists(ruta)){
+    download.file(gc_ruta, ruta)
+} else {
+    fifa <- read_csv(ruta)
+}
+tw <- fifa$Tweet
+tw[1:10]
+```
+
+```{r algorenglon}
+set.seed(91922)
+hash_f <- map(1:50, ~ generar_hash_mod())
+system.time(mat_tejas <- crear_tejas_reng(tw[1:100000], k = 5))
+system.time(firmas <- calc_firmas_hash_reng(mat_tejas, hash_f))
+```
+
+Por ejemplo, ¿cuáles son tweets similares al primero?
+
+```{r}
+similitudes <- map_dbl(1:ncol(firmas), ~ mean(firmas[, .x] == firmas[, 1]))
+indices <- which(similitudes > 0.4)
+length(indices)
+similares <- tibble(tweet = tw[indices],
+           jacc_estimada = similitudes[indices]) %>%
+    arrange(jacc_estimada)
+DT::datatable(similares)
+```
+
+
+## Minhash: algoritmo por documento
+
+En muchas implementaciones, se usa un algoritmo por documento, en lugar de por teja:
+
+- El algoritmo recorre documento por documento.
+- Se calculan las tejas del documento.
+- Para cada función hash: se aplica la función a todas las tejas y 
+se toma el mínimo.
+- Estos mínimos (tantos como funciones hash haya) dan la firma del documento.
+
+Tiene la ventaja de no requerir preprocesamiento para hacer el índice de tejas,
+pues típicamente los datos están organizados por documentos. Para datos distribuidos grandes,
+el preprocesamiento necesario para aplicar el algoritmo por teja puede ser costoso.
+La desventaja es
+que recalculamos muchas veces la misma función hash para cada teja. Esta también
+es la implementación que se utiliza en [Spark](https://github.com/apache/spark/blob/v2.1.0/mllib/src/main/scala/org/apache/spark/ml/feature/MinHashLSH.scala).
+
+Podríamos hacer una implementación como sigue:
+
+
+
+```{r}
+crear_tejas_doc <- function(textos, k = 4){
+    # las tejas serán convertidas a enteros
+    num_docs <- length(textos)
+    # crear tejas
+    tejas <- calcular_tejas(textos, k = k) %>% map(unique)
+    tejas_df <- tibble(texto_id = 1:num_docs, shingles = tejas) %>%
+        unnest_legacy %>% 
+        mutate(shingle_n = as.numeric(factor(shingles))) %>% 
+        group_by(texto_id) %>% 
+        summarise(shingles = list(shingle_n))
+    list(tejas = tejas_df$shingles, num_docs = num_docs, k = k)
+}
+```
+
+Y obtenemos las tejas ordenadas por documento:
+
+```{r}
+tejas_obj <- crear_tejas_doc(textos, k = 4)
+tejas_obj$tejas[1:3]
+```
+
+
+Nuestra función ahora procesa documento por documento:
+
+
+```{r}
+calc_firmas_hash_doc <- function(tejas_obj, hash_funs){
+    num_docs <- tejas_obj$num_docs
+    # min hashing
+    num_hashes <- length(hash_funs)
+    tejas <- tejas_obj$tejas
+    firmas <- vector("list", num_docs)
+    for(i in 1:num_docs){
+        firmas[[i]] = map_dbl(hash_f, ~ min(.x(tejas[[i]])))
+    }
+    data_frame(doc_id = 1:num_docs, firma = firmas)
+}
+```
+
+```{r}
+set.seed(2811)
+hash_f <- map(1:12, ~ generar_hash_mod())
+tejas_obj <- crear_tejas_doc(textos, k = 4)
+firmas_df <- calc_firmas_hash_doc(tejas_obj, hash_f)
+firmas_df
+mean(firmas_df$firma[[1]]==firmas_df$firma[[2]])
+mean(firmas_df$firma[[1]]==firmas_df$firma[[3]])
+mean(firmas_df$firma[[3]]==firmas_df$firma[[4]])
+```
+
+Otra opción es usar una implementación donde nos ahorramos
+numerar las tejas, pero pagamos el costo de una función de hash
+más complicada para cadenas:
+
+```{r}
+calc_firmas_hash_doc_str <- function(tejas, hash_funs){
+    num_docs <- tejas_obj$num_docs
+    # min hashing
+    num_hashes <- length(hash_funs)
+    firmas <-vector("list", num_docs)
+    for(i in 1:num_docs){
+        firmas[[i]] = map_dbl(hash_funs, ~ min(.x(tejas[[i]])))
+    }
+    firmas
+}
+```
+
+
+```{r}
+set.seed(2)
+hash_f <- map(1:12, ~ generar_hash())
+tejas <- calcular_tejas(textos, k = 4)
+firmas <- calc_firmas_hash_doc_str(tejas, hash_f)
+#firmas[[1]]
+mean(firmas[[1]]==firmas[[2]])
+mean(firmas[[1]]==firmas[[3]])
+mean(firmas[[3]]==firmas[[4]])
+```
+
+
+
+
+
+## Ejemplo: tweets, usando textreuse
+
+En el paquete *textreuse*, se usa un algoritmo por documento, y hace
+hash directamente de las cadenas de las tejas
+
+```{r}
+library(textreuse)
+minhash <- minhash_generator(50)
+```
+
+```{r textreuse}
+# este caso ponemos en hash_func los minhashes, para después
+# usar la función pairwise_compare (que usa los hashes)
+options("mc.cores" = 4L)
+system.time(
+corpus_tweets <- TextReuseCorpus(text = tw[1:100000], 
+    tokenizer = calcular_tejas, k = 5,
+    hash_func = minhash, keep_tokens = TRUE,
+    keep_text = TRUE, skip_short = FALSE)
+)
+```
+
+Busquemos tweets similares a uno en particular
+
+```{r}
+corpus_tweets[[1]]$content
+min_hashes <- hashes(corpus_tweets)
+similitud <- map_dbl(min_hashes, ~ mean(min_hashes[[1]] == .x))
+indices <- which(similitud > 0.4)
+length(names(indices))
+```
+
+```{r}
+names(indices)[1:5]
+similitud[indices][1:5]
+map(names(indices), ~ corpus_tweets[[.x]]$content)[1:5]
+```
+
+
+¿Cuáles son las verdaderas distancias de Jaccard? Por ejemplo,
+
+```{r}
+jaccard_similarity(
+  calcular_tejas(corpus_tweets[["doc-1"]]$content, k = 5),
+  calcular_tejas(corpus_tweets[["doc-417"]]$content, k = 5)
+  )
+```
+
+```{r}
+jaccard_similarity(
+  calcular_tejas(corpus_tweets[["doc-1"]]$content, k = 5),
+  calcular_tejas(corpus_tweets[["doc-5"]]$content,  k = 5)
+  )
+```
+
+**Observación**: Una vez que calculamos los que tienen similitud
+aproximada $>$ $0.4$, podemos calcular la función de Jaccard exacta
+para los elementos similares resultantes.
+
+
+## Buscando vecinos cercanos
+
+Aunque hemos reducido el trabajo para hacer comparaciones de documentos,
+no hemos hecho mucho avance en encontrar todos los pares similares
+de la colección completa de documentos. Intentar calcular similitud
+para todos los pares (del orden $n^2$) es demasiado trabajo:
+
+```{r simstextreuse}
+system.time(
+pares  <- pairwise_compare(corpus_tweets[1:200], ratio_of_matches) %>%
+      pairwise_candidates()
+)
+pares <- pares %>% filter(score > 0.20) %>% arrange(desc(score)) 
+```
+
+Nótese que si tuviéramos $10$ veces más tweets (una fracción todavía del conjunto completo) el número de comparaciones se multiplica por $100$ aproximadamente.
+En la siguiente parte veremos como aprovechar estos minhashes para hacer una
+búsqueda eficiente de pares similares.
+
+## Locality sensitive hashing (LSH) para documentos
+
+Calcular todas las posibles similitudes de una
+colección de un conjunto no tan grande de documentos es difícil. Sin
+embargo, muchas veces lo que nos interesa es simplemente agrupar
+colecciones de documentos que tienen alta similitud (por ejemplo para
+deduplicar, hacer clusters de usuarios muy similares, etc.).
+
+Una técnica para encontrar vecinos cercanos de este tipo es Locality Sensitive
+Hashing (LSH), que generalizamos en la sección siguiente. Comenzamos
+construyendo LSH basado en las firmas de minhash. La idea general
+es: 
+
+```{block2, type = 'resumen'}
+**Idea general de Minshashing LSH**
+- Recorremos la matriz de firmas documento por documento
+- Asignamos el documento a una cubeta dependiendo de sus valores minhash (su firma).
+- Todos los pares de documentos que caen en una misma cubeta son candidatos a pares similares. Generalmente tenemos mucho menos candidatos que el total de posibles pares.
+- Checamos todos los pares candidatos dentro de cada cubeta que contenga más de un
+elemento (calculando similitud de Jaccard original)
+```
+
+Nótese que con este método hemos resuelto de manera aproximada nuestro problema 
+de encontrar pares similares. En la siguiente parte discutiremos cómo decidir
+si es o no una buena aproximación. Veremos también formas de diseñar las cubetas para obtener candidatos con la
+similitud que busquemos (por ejemplo, mayor a $0.5$, mayor a $0.9$, etc.). 
+
+Antes veremos algunas posibilidades construidas a mano para lograr
+nuestro objetivo. Usaremos en estos la implementación del algoritmo por documento.
+
+### Ejemplo: todos los minshashes coinciden
+
+Calculamos los minhashes, y creamos una cubeta para cada minhash diferente. Los
+candidatos a similitud son pares que caen en una misma cubeta. Como usamos todos
+los hashes, los candidatos tienden a ser textos muy similares.
+
+Usamos un primo chico para leer los resultados más fácilmente:
+
+```{r}
+textos_dup <- c(textos,  textos[2], "este es el Documento de Ejemplo" ,
+                paste0(textos[2], '!'), 'texto diferente a todos')
+textos_dup
+set.seed(21)
+hash_f <- map(1:12, ~ generar_hash_mod(p = 107))
+tejas <- crear_tejas_doc(textos_dup, k = 4)
+firmas <- calc_firmas_hash_doc(tejas, hash_f)
+firmas_2 <- firmas %>% 
+    mutate(cubeta = map_chr(firma, paste, collapse ="-")) %>% select(-firma)
+firmas_2
+```
+
+Ahora agrupamos por cubetas:
+
+```{r}
+cubetas_df <- firmas_2 %>% group_by(cubeta) %>% 
+    summarise(docs = list(doc_id)) %>% 
+    mutate(n_docs = map_int(docs, length)) 
+```
+
+y filtramos las cubetas con más de un elemento:
+
+```{r}
+candidatos <- cubetas_df %>% filter(n_docs > 1)
+candidatos
+```
+
+Y los candidatos de alta similud se extraen de estas cubetas
+que tienen más de $1$ elemento. Son:
+
+```{r}
+candidatos$docs
+```
+
+Ahora podemos extraer los pares de similitud alta:
+
+```{r}
+extraer_pares <- function(candidatos, cubeta, docs, textos = NULL){
+   enq_cubeta <- enquo(cubeta)
+   enq_docs <- enquo(docs)
+   pares <- candidatos %>% 
+    mutate(pares = map(!!enq_docs, ~ combn(sort(.x), 2, simplify = FALSE))) %>%
+    select(!!enq_cubeta, pares) %>% unnest_legacy %>% 
+    mutate(a = map_int(pares, 1)) %>% 
+    mutate(b = map_int(pares, 2)) %>% 
+    select(-pares) %>% select(-!!enq_cubeta) %>% unique
+   if(!is.null(textos)){
+       pares <- pares %>% mutate(texto_a = textos[a], texto_b = textos[b])
+   }
+   pares
+}
+DT::datatable(extraer_pares(candidatos, cubeta, docs, textos = textos_dup))
+```
+
+### Ejemplo: algún grupo de minhashes coincide
+
+Si quisiéramos capturar como candidatos pares de documentos con similitud
+más baja, podríamos pedir que coincidan solo algunos de los hashes. Por ejemplo,
+para agrupar textos con algún grupo de $2$ minshashes iguales, podríamos hacer:
+
+
+
+```{r}
+particion <- split(1:12, ceiling(1:12 / 2))
+particion
+separar_cubetas_fun <- function(particion){
+    function(firma){
+        map_chr(particion, function(x){
+            prefijo <- paste0(x, collapse = '')
+            cubeta <- paste(firma[x], collapse = "-")
+            paste(c(prefijo, cubeta), collapse = '|')
+        })
+    }
+}
+sep_cubetas <- separar_cubetas_fun(particion)
+sep_cubetas(firmas$firma[[1]])
+firmas_3 <- firmas %>% 
+    mutate(cubeta = map(firma, sep_cubetas)) %>% 
+    select(-firma) %>% unnest_legacy
+firmas_3
+```
+
+Ahora agrupamos por cubetas:
+
+```{r}
+cubetas_df <- firmas_3 %>% group_by(cubeta) %>% 
+    summarise(docs = list(doc_id)) %>% 
+    mutate(n_docs = map_int(docs, length)) 
+```
+
+y filtramos las cubetas con más de un elemento:
+
+```{r}
+candidatos <- cubetas_df %>% filter(n_docs > 1)
+candidatos
+```
+
+```{r}
+DT::datatable(extraer_pares(candidatos, cubeta, docs, textos = textos_dup) %>% 
+                  arrange(texto_a))
+```
+
+
+
+
+
+
+## Tarea {-}
+
+1. Calcula la similitud de Jaccard de las cadenas "Este es el ejemplo 1" y "Este es el ejemplo 2", usando tejas de tamaño $3$.
+
+2. (Ejercicio de [@mmd]) Considera la siguiente matriz de tejas-documentos:
+
+```{r}
+mat <- matrix(c(0,1,0,1,0,1,0,0,1,0,0,1,0,0,1,0,0,0,1,1,1,0,0,0),
+              nrow = 6, byrow = TRUE)
+colnames(mat) <- c('d_1','d_2','d_3','d_4')
+rownames(mat) <- c(0,1,2,3,4,5)
+mat
+```
+
+  - Sin permutar esta matriz, calcula la matriz de firmas minhash usando las siguientes funciones
+  hash: $h_1(x) = 2x+1\mod 6$, $h_2(x) = 3x+2\mod 6$, $h_3(x)=5x+2\mod 6$.
+Recuerda que $a\mod 6$ es el residuo que se obtiene al dividir a entre $6$, por ejemplo $14\mod 6 = 2$, y usa la numeración de renglones comenzando en $0$.
+  - Compara tu resultado usando el algoritmo por renglón que vimos en clase,
+    y usando el algoritmo por columna (el mínimo hash de los números de renglón que tienen un $1$).
+  - ¿Cuál de estas funciones hash son verdaderas permutaciones?
+  - ¿Qué tan cerca están las similitudes de Jaccard estimadas por minhash de las verdaderas similitudes?
+
+3. Funciones hash. Como vimos en clase, podemos directamente hacer hash
+de las tejas (que son cadenas de texto), en lugar de usar hashes de números enteros (número de renglón). Para lo siguiente, puedes usar la función *hash_string* del paquete *textreuse* (o usar la función  *pyhash.murmur3_32* de la librería *pyhash*):
+
+ - Calcula valores hash de algunas cadenas como 'a', 'Este es el ejemplo 1', 'Este es el ejemplo 2'. 
+ - Calcula los valores hash para las tejas de tamaño $3$ de 'Este es el ejemplo 1'. ¿Cuántos valores obtienes?
+ - Usa los números del inciso anterior para calcular el valor minhash del texto anterior. 
+ - Repite para la cadena 'Este es otro ejemplo.', y usa este par de minhashes para estimar la similitud de Jaccard (en general usamos más funciones minhash para tener una buena estimación, no solo una!).
+- Repite los pasos anteriores para  $10$ funciones minhash (puedes usar *minhash_generator* de *textreuse*, o usar distintas semillas para *pyhash.murmur3_32*, o algunas de las funciones que generan funciones hash que vimos en clase).
+
+4. Utiliza el código visto en clase para encontrar pares de similitud alta en la colección de tweets que vimos en clase. Utiliza unos $15$ hashes para encontrar tweets casi duplicados. ¿Cuántos tweets duplicados encontraste?
+¿Qué pasa si usas menos o más funciones hash?
 
