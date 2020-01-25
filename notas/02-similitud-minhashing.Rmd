@@ -701,7 +701,7 @@ Construimos una función para invertir:
 crear_tejas_reng <- function(textos, k = 4){
     num_docs <- length(textos)
     # crear tejas
-    tejas <- calcular_tejas(textos, k = k) %>% map(unique)
+    tejas <- calcular_tejas(textos, k = k) 
     # invertir
     tejas_df <- tibble(texto_id = 1:num_docs, shingles = tejas) %>% 
         unnest_legacy() %>% 
@@ -777,7 +777,7 @@ tw[1:10]
 ```{r algorenglon}
 set.seed(91922)
 hash_f <- map(1:50, ~ generar_hash_mod())
-system.time(mat_tejas <- crear_tejas_reng(tw[1:100000], k = 5))
+system.time(mat_tejas <- crear_tejas_reng(tw[1:200000], k = 5))
 system.time(firmas <- calc_firmas_hash_reng(mat_tejas, hash_f))
 ```
 
@@ -914,7 +914,7 @@ minhash <- minhash_generator(50)
 # usar la función pairwise_compare (que usa los hashes)
 options("mc.cores" = 4L)
 system.time(
-corpus_tweets <- TextReuseCorpus(text = tw[1:100000], 
+corpus_tweets <- TextReuseCorpus(text = tw[1:200000], 
     tokenizer = calcular_tejas, k = 5,
     hash_func = minhash, keep_tokens = TRUE,
     keep_text = TRUE, skip_short = FALSE)
