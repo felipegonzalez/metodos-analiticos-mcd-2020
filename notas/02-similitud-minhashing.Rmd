@@ -87,10 +87,7 @@ Hay varias maneras de representar documentos como conjuntos. Las más simples so
 2. Los documentos son colecciones de caracteres, o conjuntos de sucesiones de caracteres (cadenas) de tamaño $k$.
 
 
-La primera representación se llama *representación de n-gramas*, y la segunda *representación de k-tejas*.
-
-Nótese que en ambos casos podemos incluir información acerca del *orden* en el que
-ocurren las palabras o caracteres, y no solamente su ocurrencia en el documento. Esto es útil para varios problemas.
+La primera representación se llama *representación de n-gramas*, y la segunda *representación de k-tejas*. Nótese que en ambos casos, representaciones de dos documentos con secciones parecidas acomodadas en distintos lugares tienden a ser similares.
 
 Consideremos una colección de textos cortos:
 
@@ -1008,7 +1005,7 @@ wc
 En primer lugar, podemos deduplicar tweets idénticos. Esto lo podemos hacer con una función hash simple
 
 ```{r, collapse=TRUE}
-tw_hashes <- hash_string(tw)
+tw_hashes <- digest::digest2int(tw)
 tw_dedup <- tibble(tweet = tw, hash = tw_hashes) %>% 
   group_by(hash) %>% 
   summarise(tweet = tweet[1]) %>% pull(tweet)
@@ -1019,17 +1016,18 @@ length(tw_dedup)
 Ahora podemos agrupar 
 
 ```{r}
+set.seed(834)
 minhash_funs <- minhash_generator(12)
 corpus_tweets <- TextReuseCorpus(text = tw_dedup, 
-    tokenizer = calcular_tejas, k = 5,
+    tokenizer = calcular_tejas, k = 4,
     minhash_func = minhash_funs, hash_func = minhash_funs,
     keep_tokens = TRUE,
     skip_short = TRUE)
 ```
 
 ```{r}
-#Hacemos 2 bandas de 6 renglones (hashes)
-cubetas_tbl <- lsh(corpus_tweets, bands = 2, progress = TRUE)
+#Hacemos 3 bandas de 4 renglones (hashes)
+cubetas_tbl <- lsh(corpus_tweets, bands = 3, progress = TRUE)
 cubetas_tbl
 ```
 
@@ -1063,32 +1061,46 @@ qplot(cand_score$score)
 
 ```{r, message=FALSE, warning=FALSE}
 # encontrar firma minhash
+textos_nuevos <- c("Croatia broke through to finals", "One of these in the final Russia Croatia Sweden Switzerland")
 tweet <- TextReuseCorpus(
-    text = c("Croatia is through finally", "France is in the World Cup"), 
-    tokenizer = calcular_tejas, k = 5,
+    text = textos_nuevos, 
+    tokenizer = calcular_tejas, k = 4,
     minhash_func = minhash_funs, hash_func = minhash_funs,
     keep_tokens = TRUE,
     skip_short = TRUE)
 # encontrar las cubetas
-cubetas <- lsh(tweet, bands = 2, progress = TRUE)$buckets
+cubetas <- lsh(tweet, bands = 3, progress = TRUE)$buckets
 cubetas
 ```
 
 ```{r}
 vecinos <- cubetas_tbl %>% filter(buckets %in% cubetas) %>% pull(doc)
 texto_vecinos <- map(vecinos, ~ corpus_tweets[[.x]]$content)
-texto_vecinos
 ```
 
 Podemos finalemente calcular similitud para descartar falsos positivos. Por ejemplo,
 
 ```{r}
 sims <- map_dbl(texto_vecinos, ~ sim_jaccard(calcular_tejas(.x, 5), 
-            calcular_tejas("Croatia is through finally", 5)))
-tibble(a = "Croatia is through finally", b = unlist(texto_vecinos), score = sims)
+            calcular_tejas(textos_nuevos[2], 5)))
+tibble(b = unlist(texto_vecinos), score = sims) %>% 
+  filter(score > 0.4) %>% DT::datatable()
 ```
 
 
+```{r}
+sims <- map_dbl(texto_vecinos, ~ sim_jaccard(calcular_tejas(.x, 5), 
+            calcular_tejas(textos_nuevos[1], 5)))
+tibble(b = unlist(texto_vecinos), score = sims) %>% 
+  filter(score > 0.3) %>% DT::datatable()
+```
 
+## Resumen
 
+Veamos qué resolvimos con cada uno de los pasos, desde la conversión a tejas hasta vecinos cercanos
+[resumen adaptado de aquí](https://www.slideshare.net/MailRuGroup/okru-finding-similar-items-in-highdimensional-spaces-locality-sensitive-hashing):
+
+1. Método de tejas: partes de documentos similares pueden ocurrir en distinto orden.
+2. Firmas de minhashing: Representación de documentos en tejas puede utilizar mucha memoria. Con minhashing tenemos una versión más compacta que preserva similitud
+3. LSH y cubetas: no es necesario comparar todos los pares posibles, sino solamente aquellos con firmas similares.
 
