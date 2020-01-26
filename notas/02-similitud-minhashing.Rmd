@@ -87,7 +87,8 @@ Hay varias maneras de representar documentos como conjuntos. Las más simples so
 2. Los documentos son colecciones de caracteres, o conjuntos de sucesiones de caracteres (cadenas) de tamaño $k$.
 
 
-La primera representación se llama *representación de n-gramas*, y la segunda *representación de k-tejas*. Nótese que en ambos casos, representaciones de dos documentos con secciones parecidas acomodadas en distintos lugares tienden a ser similares.
+La primera representación se llama *representación de n-gramas*, y la segunda *representación de k-tejas*, 
+o $k$-_shingles_. Nótese que en ambos casos, representaciones de dos documentos con secciones parecidas acomodadas en distintos lugares tienden a ser similares.
 
 Consideremos una colección de textos cortos:
 
@@ -102,9 +103,12 @@ textos <- c("el perro persigue al gato, pero no lo alcanza",
 Abajo mostramos la representacion en bolsa de palabras (1-gramas) y la representación en bigramas (2-gramas) de los primeros dos documentos:
 
 ```{r}
-print("Bolsa de palabras:")
+# Bolsa de palabras (1-gramas)
 tokenizers::tokenize_ngrams(textos[1:2], n = 1) %>% map(unique)
-print("2-gramas:")
+```
+
+```{r}
+# bigramas
 tokenizers::tokenize_ngrams(textos[1:2], n = 2) %>% map(unique)
 ```
 
@@ -115,9 +119,9 @@ calcular_tejas <- function(x, k = 2){
   tokenizers::tokenize_character_shingles(x, n = k, lowercase = FALSE,
     simplify = TRUE, strip_non_alpha = FALSE)
 }
-print("2-tejas:")
+# 2-tejas
 calcular_tejas(textos[1:2], k = 2) %>% map(unique)
-print("4-tejas:")
+# 4-tejas:"
 calcular_tejas(textos[1:2], k = 4) %>% map(unique)
 ```
 
@@ -156,6 +160,7 @@ Documentos textualmente similares tienen tejas similares:
 
 ```{r, collapse = TRUE}
 # calcular tejas
+textos
 tejas_doc <- calcular_tejas(textos, k = 4)
 # calcular similitud de jaccard entre algunos pares
 sim_jaccard(tejas_doc[[1]], tejas_doc[[2]])
@@ -192,7 +197,7 @@ como $k=9,10$, pues en documentos largos puede haber cientos de miles
 de caracteres. Si $k$ fuera más chica entonces una gran parte de las tejas aparecerá en muchos de los documentos, y todos los documentos tendrían similitud alta.
 
 - Evitamos escoger $k$ demasiado grande, pues entonces los únicos documentos similares tendrían
-que tener subcadenas largas exactamente iguales. Por ejemplo: "Batman y Robin" y "Robin y Batman" son muy
+que tener subcadenas largas exactamente iguales. Por ejemplo: "Batman y Robin" y "Robin y Batman" son algo
 similares si usamos tejas de tamaño 4, pero son muy distintas si usamos tejas de tamaño 8:
 
 #### Ejemplo {-}
@@ -211,7 +216,8 @@ sim_jaccard(tejas_1, tejas_2)
 ## Representación matricial
 
 Podemos usar una matriz binaria para guardar todas las
-representaciones en k-tejas de nuestra colección de documentos.
+representaciones en k-tejas de nuestra colección de documentos. Puede usarse
+una representación rala (_sparse_) si es necesario:
 
 ```{r}
 dtejas_tbl <- tibble(id = paste0("doc_", 1:length(textos)), 
@@ -245,7 +251,7 @@ mat_td <- t(dtejas_tbl %>% select(-tejas) %>% as.matrix)
 
 
 
-## Reducción probabilística de dimensionalidad
+## Minhash y reducción probabilística de dimensionalidad
 
 Para una colección grande de documentos
 la representación binaria de la colección de documentos 
@@ -263,7 +269,7 @@ el espacio de enteros.
 número del primer renglón que es distinto de $0$.
 
 
-#### Ejercicio {#ej1}
+#### Ejercicio {-}
 
 Considera la matriz de tejas-documentos para cuatro documentos y cinco tejas
 dada a continuación, con las permutaciones $(2,3,4,5,1)$ (indica que el renglón
@@ -358,7 +364,7 @@ mean(firmas_perms$doc_3 == firmas_perms$doc_4)
 
 que comparamos con las similitudes de Jaccard
 
-```{r}
+```{r, collapse = TRUE}
 sim_jaccard(tejas_doc[[1]], tejas_doc[[2]])
 sim_jaccard(tejas_doc[[1]], tejas_doc[[3]])
 sim_jaccard(tejas_doc[[4]], tejas_doc[[3]])
@@ -418,6 +424,42 @@ de la siguiente forma:
 4. Repetimos para cada permutación para obtener la firma del documento.
 
 
+#### Ejemplo {-}
+Consideremos el documento 1 de nuestro ejemplo. Extraemos
+
+```{r}
+doc_1 <- dtejas_tbl %>% pull(doc_1)
+doc_1
+# extraemos ínidices iguales a 1
+tejas_num <- which(doc_1 == 1)
+tejas_num
+```
+
+Ahora convertimos las permutaciones a funciones:
+
+```{r}
+perms_fun <- permutaciones %>% map(~  function(z) .x[z])
+```
+
+Para calcular el primer elemento de la firma, transformamos los índices de arriba y
+calculamos el mínimo:
+
+```{r}
+perms_fun[[1]](tejas_num) %>% min
+```
+Para el tercer elemento de la firma
+
+```{r}
+perms_fun[[3]](tejas_num) %>% min
+```
+Y la firma completa es
+```{r}
+map_int(perms_fun, ~ min(.x(tejas_num)))
+```
+
+
+--
+
 Escribimos nuestra función para calcular tejas y calcular firmas:
 
 ```{r}
@@ -433,8 +475,12 @@ crear_tejas_num <- function(textos, k = 4){
         summarise(tejas = list(tejas_num))
     tejas_df
 }
+```
+
+
+```{r}
 calcular_firmas_doc <- function(tejas_df, hash_funs){
-    # Calcula firmas
+    # Calcula firmas por documento
     num_docs <- nrow(tejas_df)
     num_hashes <- length(hash_funs)
     tejas <- tejas_df$tejas
@@ -450,13 +496,6 @@ Nótese que en el código de arriba utiiizamos funciones en lugar de vectores pa
 representar permutaciones. Este correspondencia es como sigue:
 
 ```{r}
-# uno se queda fijo, 4 renglon va a posición 2, 5 a posición 3, etc:
-perm = c(1,4,5,2,3)
-fun_perm <- function(z) perm[z]
-fun_perm(3); fun_perm(4)
-```
-
-```{r}
 # convertimos vectores de permutaciones en funciones
 perm_funs <- map(permutaciones, ~ function(z) .x[z])
 # creamos tejas y calculamos firmas
@@ -466,7 +505,7 @@ crear_tejas_num(textos, k = 4) %>%
   # esta parte es para poner en forma ancha:
   group_by(doc_id) %>% 
   mutate(hash = row_number()) %>% 
-  pivot_wider(names_from=doc_id, values_from = firma)
+  pivot_wider(names_from=doc_id, values_from = firma, names_prefix = "doc_")
 ```
 
 **Observación**: nótese que no estamos permutando ningún vector o matriz en este cálculo. Esto
@@ -708,7 +747,7 @@ mean(firmas_doc$doc_3 == firmas_doc$doc_4)
 
 ## Ejemplo:  tweets 
 
-Ahora buscaremos tweets similares en una colección de un [concurso de
+Ahora buscaremos tweets similares en una colección de un [dataset de
 kaggle](https://www.kaggle.com/rgupta09/world-cup-2018-tweets/home?utm_medium=email&utm_source=mailchimp&utm_campaign=datanotes-20180823).
 
 ```{r, message=FALSE}
@@ -748,7 +787,7 @@ DT::datatable(similares)
 En el paquete *textreuse*, se usa un algoritmo por documento, y hace
 hash directamente de las cadenas de las tejas
 
-```{r}
+```{r, message=FALSE, warning=FALSE}
 library(textreuse)
 minhash <- minhash_generator(50)
 ```
@@ -1022,12 +1061,12 @@ corpus_tweets <- TextReuseCorpus(text = tw_dedup,
     tokenizer = calcular_tejas, k = 4,
     minhash_func = minhash_funs, hash_func = minhash_funs,
     keep_tokens = TRUE,
-    skip_short = TRUE)
+    skip_short = TRUE, progress = FALSE)
 ```
 
 ```{r}
 #Hacemos 3 bandas de 4 renglones (hashes)
-cubetas_tbl <- lsh(corpus_tweets, bands = 3, progress = TRUE)
+cubetas_tbl <- lsh(corpus_tweets, bands = 3, progress = FALSE)
 cubetas_tbl
 ```
 
@@ -1067,9 +1106,9 @@ tweet <- TextReuseCorpus(
     tokenizer = calcular_tejas, k = 4,
     minhash_func = minhash_funs, hash_func = minhash_funs,
     keep_tokens = TRUE,
-    skip_short = TRUE)
+    skip_short = TRUE, progress = FALSE)
 # encontrar las cubetas
-cubetas <- lsh(tweet, bands = 3, progress = TRUE)$buckets
+cubetas <- lsh(tweet, bands = 3, progress = FALSE)$buckets
 cubetas
 ```
 
