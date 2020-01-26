@@ -709,7 +709,7 @@ mean(firmas_doc$doc_3 == firmas_doc$doc_4)
 
 
 
-## Ejemplo: tweets 
+## Ejemplo:  tweets 
 
 Ahora buscaremos tweets similares en una colección de un [concurso de
 kaggle](https://www.kaggle.com/rgupta09/world-cup-2018-tweets/home?utm_medium=email&utm_source=mailchimp&utm_campaign=datanotes-20180823).
@@ -994,9 +994,101 @@ DT::datatable(pares_scores)
 Por ejemplo, podemos hacer clustering con las similitudes de Jaccard:
 
 ```{r}
-library(igraph)
 pares_dis <- pares_scores %>% select(a, b, score) 
-pares_g <- graph_from_data_frame(pares_dis, directed = FALSE)
-wc <- cluster_label_prop(pares_g, weights = pares_g$score)
+pares_g <- igraph::graph_from_data_frame(pares_dis, directed = FALSE)
+wc <- igraph::cluster_label_prop(pares_g, weights = pares_g$score)
 wc
 ```
+
+
+
+
+## Ejemplo: deduplicar tweets con textreuse
+
+En primer lugar, podemos deduplicar tweets idénticos. Esto lo podemos hacer con una función hash simple
+
+```{r, collapse=TRUE}
+tw_hashes <- hash_string(tw)
+tw_dedup <- tibble(tweet = tw, hash = tw_hashes) %>% 
+  group_by(hash) %>% 
+  summarise(tweet = tweet[1]) %>% pull(tweet)
+length(tw)
+length(tw_dedup)
+```
+
+Ahora podemos agrupar 
+
+```{r}
+minhash_funs <- minhash_generator(12)
+corpus_tweets <- TextReuseCorpus(text = tw_dedup, 
+    tokenizer = calcular_tejas, k = 5,
+    minhash_func = minhash_funs, hash_func = minhash_funs,
+    keep_tokens = TRUE,
+    skip_short = TRUE)
+```
+
+```{r}
+#Hacemos 2 bandas de 6 renglones (hashes)
+cubetas_tbl <- lsh(corpus_tweets, bands = 2, progress = TRUE)
+cubetas_tbl
+```
+
+```{r}
+cubetas_tbl_ag <- cubetas_tbl %>% group_by(buckets) %>% 
+  summarise(docs = list(doc), n_docs = length(doc)) %>% 
+  arrange(desc(n_docs))
+cubetas_tbl_ag
+```
+
+
+```{r}
+lapply(cubetas_tbl_ag$docs[[1]], function(x) {corpus_tweets[[x]]$content}) %>% head
+lapply(cubetas_tbl_ag$docs[[2]], function(x) {corpus_tweets[[x]]$content}) %>% head
+lapply(cubetas_tbl_ag$docs[[190]], function(x) {corpus_tweets[[x]]$content}) %>% head
+```
+
+Podemos calcular la similitud de jaccard exacta entre candidatos, y filtrar los que tengan similitud baja,
+por ejemplo
+
+```{r}
+candidatos <- lsh_candidates(cubetas_tbl)
+candidatos
+cand_score <- lsh_compare(candidatos, corpus_tweets, jaccard_similarity)
+cand_score
+qplot(cand_score$score)
+```
+
+
+## Ejemplo: encontrar vecinos cercanos
+
+```{r, message=FALSE, warning=FALSE}
+# encontrar firma minhash
+tweet <- TextReuseCorpus(
+    text = c("Croatia is through finally", "France is in the World Cup"), 
+    tokenizer = calcular_tejas, k = 5,
+    minhash_func = minhash_funs, hash_func = minhash_funs,
+    keep_tokens = TRUE,
+    skip_short = TRUE)
+# encontrar las cubetas
+cubetas <- lsh(tweet, bands = 2, progress = TRUE)$buckets
+cubetas
+```
+
+```{r}
+vecinos <- cubetas_tbl %>% filter(buckets %in% cubetas) %>% pull(doc)
+texto_vecinos <- map(vecinos, ~ corpus_tweets[[.x]]$content)
+texto_vecinos
+```
+
+Podemos finalemente calcular similitud para descartar falsos positivos. Por ejemplo,
+
+```{r}
+sims <- map_dbl(texto_vecinos, ~ sim_jaccard(calcular_tejas(.x, 5), 
+            calcular_tejas("Croatia is through finally", 5)))
+tibble(a = "Croatia is through finally", b = unlist(texto_vecinos), score = sims)
+```
+
+
+
+
+
