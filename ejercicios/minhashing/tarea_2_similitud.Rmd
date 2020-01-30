@@ -1,0 +1,211 @@
+---
+title: "Similitud de documentos"
+output: html_notebook
+---
+
+Considera los siguientes dos documentos:
+
+```{r}
+library(tidyverse)
+docs <- c("Trump firma el tratado de libre comercio T-MEC con Canadá y México. Hoy finalmente estamos poniendo fin a la pesadilla del TLCAN, dijo Trump durante la firma del nuevo acuerdo comercial.", 
+"Al llevarse a cabo en la Casa Blanca la firma del Tratado Comercial México, Estados Unidos, Canadá, el presidente Donald Trump dijo que Ponemos fin a la pesadilla del TLCAN con la firma del T-MEC") %>% 
+  tolower()
+```
+
+
+### Representación en tejas
+
+```{r}
+# código de las notas:
+sim_jaccard <- function(a, b){
+    length(intersect(a, b)) / length(union(a, b))
+}
+calcular_tejas <- function(x, k = 2){
+  tokenizers::tokenize_character_shingles(x, n = k, lowercase = FALSE,
+    simplify = TRUE, strip_non_alpha = FALSE)
+}
+```
+
+**Pregunta 1** Convierte estos dos textos a tejas de tamaño 4. ¿Cuántas tejas distantas cada
+texto? ¿Cuántas tejas distintas hay en los dos documentos (la unión de tejas)? Calcula la similitud
+de Jaccard de estos dos textos.
+
+```{r}
+tejas_docs <- calcular_tejas(docs, k = 4)
+tejas_docs %>% map(~ length(unique(.x)))
+length(unique(unlist(tejas_docs)))
+```
+
+
+```{r}
+sim_jaccard(tejas_docs[[1]], tejas_docs[[2]])
+```
+
+---
+
+### Representación binaria
+
+Convierte la colección de documentos en la representación binaria de tejas usando el siguiente
+código de las notas:
+
+```{r}
+dtejas_tbl <- tibble(id = paste0("doc_", 1:length(docs)), 
+    tejas = tejas_docs) %>% 
+  unnest_legacy %>% 
+  unique %>% mutate(val = 1) %>% 
+  pivot_wider(names_from = id, values_from = val, values_fill = list(val = 0)) %>% 
+  arrange(tejas) # opcionalmente ordenamos tejas
+```
+
+
+*Pregunta 2*: ¿Cuáles son las dimensiones de esta matriz?  ¿Cuántos
+1's tiene la columna correspondiente al documento 1? Contrasta tu respuestas con la pregunta 1
+
+---
+
+### Permutaciones y firma minhash
+
+En esta parte permutamos los renglones de la matriz al azar, y vemos dónde aparece el primer uno para
+cada documento. Primero convertimos a matriz:
+
+```{r}
+mat <- dtejas_tbl %>% select(-tejas) %>% as.matrix
+head(mat)
+```
+
+Una permutación puede verse como una función que mapea enteros a enteros. La siguiente función
+genera funciones al azar:
+
+```{r}
+set.seed(12198)
+generar_perm <- function(n){
+  permutacion <- sample.int(n, n)
+  perm_fun <- function(x) permutacion[x]
+}
+perm_fun_1 <- generar_perm(nrow(mat))
+perm_fun_1(1:nrow(mat))
+```
+
+Por ejemplo, para ver dónde va el renglón 5 calculamos:
+
+```{r}
+perm_fun_1(5)
+```
+
+
+Aplicamos la permutación a la matriz:
+
+```{r}
+## Lo hacemos de una manera torpe para entnder mejor: si el 
+## renglón 5 va al renglón 29, entonces elr renglón 29 de la matriz
+## permutada debe ser el renglón 5 de la original:
+mat_perm <- mat
+for(i in 1:nrow(mat)) {
+  mat_perm[perm_fun_1(i), ] <- mat[i, ] 
+}
+head(mat_perm)
+```
+
+Y calculamos la firma de cada documento. La firma en este caso es un entero, la posición
+del primer uno que aparece en cada columna.
+
+```{r}
+firma <- apply(mat_perm, 2, which.max)
+firma
+```
+
+En este caso, no coinciden las firmas.
+
+
+
+**Pregunta 3**: Repite este proceso 500 veces, con 500 permutaciones escogidas al azar. En cada instancia,
+debes obtener dos números: uno para doc_1 y otro para doc_2. ¿Qué porcentaje
+de las veces coinciden estos dos valores? Verifica que este valor está cercano a la similitud de Jaccard de
+estos dos documentos.
+
+```{r}
+# Aqui tu código
+```
+
+### Calcular firma por documento
+
+Regresamos al ejemplo previo a la pregunta 3. Considera el siguiente código:
+
+```{r}
+# calculamos indices donde hay un 1:
+indices_1 <- which(mat[,1] == 1)
+indices_1
+```
+
+```{r}
+# hacemos lo mismo para el documento 2:
+indices_2 <- which(mat[,2] == 1)
+# calculamos firmas
+firma_1 <- min(perm_fun_1(indices_1))
+firma_2 <- min(perm_fun_1(indices_2))
+firma_1
+firma_2
+```
+
+
+**Pregunta 4**: explica por qué este método de calcular la firma da el mismo valor 
+que el método de permutaciones. Nota que aquí simplemente aplicamos
+la funcion perm_fun_1 a los valores de los renglones que tienen un 1, para cada documento, y
+luego calculamos el valor mínimo.
+
+### ¿Tenemos que usar permutaciones? 
+
+Considera ahora la siguiente generadora de funciones:
+
+```{r}
+set.seed(12881)
+generar_perm_mult <- function(n){
+  permutacion <- sample.int(n, n)
+  a <- sample(1000, 1)
+  b <- sample(10000, 1)
+  # multiplicamos el valor de la permutación por un valores fijos escogidos al azar:
+  perm_fun <- function(x) a * permutacion[x] + b
+}
+```
+
+Por ejemplo, los valores de los renglones ahora van a dar a los siguientes números
+
+```{r}
+perm_mult_1 <- generar_perm_mult(nrow(mat))
+perm_mult_1(1:nrow(mat))
+```
+
+Las firmas para los documentos 1 y 2 se calculan igual:
+
+```{r}
+# calculamos indices donde hay un 1:
+indices_1 <- which(mat[,1] == 1)
+indices_2 <- which(mat[,2] == 1)
+# calculamos firmas
+firma_1 <- min(perm_mult_1(indices_1))
+firma_2 <- min(perm_mult_1(indices_2))
+firma_1
+firma_2
+```
+
+Estos números no son indices de renglones de la matriz de tejas-documentos.
+
+**Pregunta 5**: Explica por qué podríamos usar estas funciones para aproximar la similitud de
+Jaccard, sin permutar la matriz de tejas-documentos. Verifica con el siguiente código:
+
+```{r}
+conteo <- 0
+for(i in 1:1000){
+  f <- generar_perm_mult(nrow(mat))
+  firma_1 <- f(which(mat[, 1] == 1)) %>% min
+  firma_2 <- f(which(mat[, 2] == 1)) %>% min
+  conteo <- conteo + (firma_1==firma_2)
+}
+conteo / 1000
+```
+
+
+**Pregunta 6** (más difícil) Explica cómo podríamos usar otras funciones simples que no dependen
+de permutaciones para estimar la similitud de Jaccard.
+
+
