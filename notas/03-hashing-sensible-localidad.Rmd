@@ -1,0 +1,362 @@
+# Similitud: Locality sensitive hashing
+
+```{r, echo=FALSE, message=FALSE}
+library(tidyverse)
+theme_set(theme_bw())
+cb_palette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+```
+
+En la sección anterior vimos como producir una representación de dimensión baja usando funciones
+hash (firmas minhash), e introdujimos la idea de LSH para poner a los documentos en cubetas, de forma
+que pares de documentos similares tienen probabilidad alta de caer en la misma cubeta.
+
+En esta sección detallamos este proceso, y también generalizamos para utilizar con otros tipos
+de medida de similitud.
+
+
+
+
+
+## Análisis de la técnica de bandas 
+
+En la sección anterior dimos la primera idea como usar
+la *técnica de bandas* con minhashes para encontrar documentos de similitud alta, con distintos umbrales de similitud alta. Aquí describimos un análisis
+más detallado de la técnica
+
+```{block2 , type='resumen'}
+Supongamos que tenemos un total de $k$ minhashes, que dividimos
+en $b$ bandas de tamaño $r$, de modo que $k=br$. 
+- Decimos que un par de documentos *coinciden* en una banda de $r$ hashes
+si coinciden en todos los hashes de esa banda.
+- Un par de documentos es un **par candidato** si 
+al menos coinciden en una banda (es decir, en al menos dentro
+de una banda todos los minhashes coinciden).
+```
+
+Ahora vamos a calcular la probabilidad de que un par de documentos
+con similitud $s$ sean un par candidato:
+
+1. La probabilidad de que estos dos documentos coincidan en un hash
+particular es $s$, la similitud de Jaccard.
+2. La probabiliad de que todos los hashes de una banda coincidan es
+$s^r$, pues seleccionamos los hashes independientemente. 
+3. Así que la probabilidad de que los documentos no coincidan en una banda
+particular es: $1-s^r$
+4. Esto implica que la probabilidad de que los documentos no coincidan en ninguna banda es $(1-s^r)^b$.
+5. Finalmente, la probabilidad de que estos dos documentos sean un par candidato es $1-(1-s^r)^b$, que es la probabilidad de que coincidan en al menos una banda.
+
+```{block2, type="resumen"}
+Si la similitud de Jaccard de dos documentos es $s$, la probabilidad
+de que sean un par candidato es igual a $$1-(1-s^r)^b$$.
+```
+
+
+
+### Ejemplo {-}
+Supongamos que tenemos $8$ minhashes, y que nos
+interesa encontrar documentos con similitud mayor a $0.7$. 
+Tenemos las siguientes posiblidades:
+
+```{r, fig.width=4, fig.asp=0.6, echo = FALSE}
+graficar_curvas <- function(df_br, colour = TRUE){
+  r <- df_br$r
+  b <- df_br$b
+  curvas_similitud <- data_frame(b = b, r = r) %>%
+    group_by(r, b) %>%
+    mutate(datos = map2(r, b, function(r, b){
+          df_out <- data_frame(s = seq(0, 1, 0.01)) %>% 
+            mutate(prob = 1 - (1 - s ^ r) ^b)
+          df_out 
+          })) %>% unnest(cols = datos)
+  graf_salida <- ggplot(curvas_similitud, aes(x = s, y = prob, 
+          colour = as.factor(interaction(b,r)))) +
+          geom_line(size=1.1) + 
+          labs(x = 'similitud', y= 'probablidad de ser candidato',
+          colour = 'b.r') 
+  if(colour){
+    graf_salida + scale_colour_manual(values = cb_palette)
+  }
+  graf_salida
+}
+```
+
+```{r, fig.width=4, fig.asp=0.6}
+r <- c(1,2,4,8)
+df_br <- data_frame(r = r, b = rev(r))
+graficar_curvas(df_br) + geom_vline(xintercept = 0.7)
+```
+
+- Con la configuración $b=1, r=8$ (un solo grupo de 8 hashes) es posible
+que no capturemos muchos pares de la similitud que nos interesa (mayor a $0.7$).
+- Con $b=8, r=1$ (al menos un hash de los $8$), dejamos pasar 
+ falsos positivos, que después vamos a tener que filtrar. Esta de cualquier forma puede ser buena
+ estrategia, pues en muchos casos la similitud de la mayoría de los pares es muy cercana a cero.
+- Los otros dos casos son mejores para nuestro propósito. $b=4$ produce falsos negativos que hay que filtrar, y para $b=2$ hay una probabilidad de alrededor de $50\%$
+de que no capturemos pares con similitud cercana a $0.7.$
+
+Generalmente quisiéramos obtener algo más cercano a una función escalón.
+Podemos acercarnos si incrementamos el número total de hashes.
+
+```{r, fig.width=4, fig.asp=0.6}
+r <- c(4, 5, 8, 10, 20)
+b <- 80/r
+graficar_curvas(data_frame(b, r)) + geom_vline(xintercept = 0.7) 
+```
+
+---
+
+**Observación**: La curva alcanza probabilidad $1/2$ cuando la similitud
+es
+$$s = \left (1-\left (0.5\right )^{1/b} \right )^{1/r}.$$
+Y podemos usar esta fórmula para escoger valores de $b$ y $r$ apropiados,
+dependiendo de que similitud nos interesa capturar (quizá moviendo un poco
+hacia abajo si queremos tener menos falsos negativos).
+```{r}
+lsh_half <- function(h, b){
+    # h es el número total de funciones hash
+   (1 - (0.5) ^ ( 1/b))^(b/h)
+}
+lsh_half(80, 16)
+```
+
+En [@mmd], se utiliza la aproximación (según la referencia, aproxima el
+punto de máxima pendiente):
+```{r}
+textreuse::lsh_threshold
+```
+
+Que está también implementada en el paquete textreuse [@R-textreuse].
+
+```{r}
+textreuse::lsh_threshold(80, 16)
+```
+### Ejemplo {-}
+
+Supongamos que nos interesan documentos con similitud mayor a $0.5$.
+Intentamos con $50$ o $200$ hashes algunas combinaciones:
+
+```{r, fig.width=5, fig.asp=0.6}
+params_umbral <- function(num_hashes, umbral_inf = 0.0, umbral_sup = 1.0){
+  # selecciona combinaciones con umbral-1/2 en un rango 
+  # (umbral_inf, umbral_sup)
+  b <- seq(1, num_hashes)
+  b <- b[num_hashes %% b == 0] # solo exactos
+  r <- floor(num_hashes %/% b)
+  combinaciones_pr <- 
+    data_frame(b = b, r = r) %>%
+    unique() %>%
+    mutate(s = (1 - (0.5)^(1/b))^(1/r)) %>%
+    filter(s < umbral_sup, s > umbral_inf)
+  combinaciones_pr
+}
+combinaciones_50 <- params_umbral(50, 0.4, 0.7)
+graficar_curvas(combinaciones_50) + 
+  geom_vline(xintercept = 0.4, lty=2) + 
+   geom_vline(xintercept = 0.7, lty=2) 
+```
+
+Con $200$ hashes podemos obtener curvas con mayor pendiente:
+
+```{r, fig.width=5, fig.asp=0.6}
+combinaciones_200 <- params_umbral(200, 0.2, 0.8)
+graficar_curvas(combinaciones_200) + 
+  geom_vline(xintercept = 0.2, lty=2) + 
+   geom_vline(xintercept = 0.8, lty=2)
+```
+
+**Observación**: La decisión de los valores para estos parámetros
+debe balancear 1. qué tan importante es tener pares no detectados (falsos
+negativos),
+y 2. el cómputo necesario para calcular los hashes y filtrar los
+falsos positivos. La ventaja computacional de LSH proviene
+de hacer *trade-offs* de lo que es más importante para nuestro
+problema.
+
+
+## Resumen de LSH basado en minhashing
+
+Resumen de [@mmd]
+
+1. Escogemos un número $k$ de tamaño de tejas, y construimos el
+conjunto de tejas de cada documento.
+2. Ordenar los pares documento-teja y agrupar por teja.
+3. Escoger $n$, el número de minhashes. Aplicamos el algoritmo de la
+clase anterior (teja por teja) para calcular las 
+firmas minhash de todos los documentos. 
+4. Escoger el umbral $s$ de similitud que nos ineresa. Escogemos $b$ y $r$
+(número de bandas y de qué tamaño), usando la fórmula de arriba hasta
+obtener un valor cercano al umbral. 
+Si es importante evitar falsos negativos, escoger valores de $b$ y $r$ que
+den un umbral más bajo, si la velocidad es importante entonces escoger
+para un umbral más alto y evitar falsos positivos. Mayores valores
+de $b$ y $r$ pueden dar mejores resultados, pero también requieren
+más cómputo.
+5. Construir pares similares usando LSH.
+6. Examinar las firmas de cada par candidato y determinar si 
+la fracción de coincidencias sobre todos los minhashes es satisfactorio.
+Alternativamente (más preciso), calcular directamente la similitud 
+de Jaccard a partir de las tejas originales. 
+
+
+Alternativamente, podemos:
+
+2. Agrupar las tejas de cada documento.
+3. Escoger $n$, el número de minhashes. Calcular el minhash de cada
+documento aplicando una función hash a las tejas del documento.
+Tomar el mínimo. Repetir para cada función hash.
+
+## Ejemplo: artículos de wikipedia
+
+En este ejemplo intentamos encontrar artículos similares de [wikipedia](http://wiki.dbpedia.org/datasets/dbpedia-version-2016-10)
+ usando las categorías a las que pertenecen. En lugar de usar tejas,
+usaremos categorías a las que pertenecen. Dos artículos tienen similitud alta cuando los conjuntos de categorías a las que pertenecen es similar.
+(este el [ejemplo original](https://github.com/elmer-garduno/metodos-analiticos/blob/master/Lecture_2_Similarity_Spark.ipynb)).
+
+Empezamos con una muestra de los datos:
+
+```{r, engine='bash'}
+head -20 ../datos/similitud/wiki-100000.txt
+```
+
+Leemos y limpiamos los datos:
+
+```{r, message = FALSE}
+limpiar <- function(lineas,...){
+  df_lista <- str_split(lineas, ' ') %>% 
+    keep(function(x) x[1] != '#') %>%
+    transpose %>%
+    map(function(col) as.character(col)) 
+  df <- data_frame(articulo = df_lista[[1]], 
+                   categorias = df_lista[[2]]) 
+  df
+}
+filtrado <- read_lines_chunked('../datos/similitud/wiki-100000.txt',
+                    skip = 1, callback = ListCallback$new(limpiar))
+articulos_df <- filtrado %>% bind_rows %>%
+                group_by(articulo) %>%
+                summarise(categorias = list(categorias))
+```
+
+```{r}
+set.seed(99)
+muestra <- articulos_df %>% sample_n(10)
+muestra
+muestra$categorias[[3]]
+```
+
+### Selección de número de hashes y bandas {-}
+
+Ahora supongamos que buscamos artículos con similitud mínima
+de $0.4$. Experimentando con valores del total de hashes y el número
+de bandas, podemos seleccionar, por ejemplo:
+
+```{r, collapse = TRUE, fig.width=5, fig.asp=0.6}
+b <- 20
+num_hashes <- 60
+lsh_half(num_hashes, b = b)
+graficar_curvas(data_frame(b = b, r = num_hashes/b)) +
+                 geom_vline(xintercept = 0.4) 
+```
+
+
+
+### Tejas y cálculo de minhashes {-}
+
+```{r}
+source('../scripts/lsh/minhash.R')
+```
+
+```{r}
+set.seed(28511)
+num_hashes <- 60
+hash_f <- map(1:num_hashes, ~ generar_hash())
+tokenize_sp <- function(x,...) stringr::str_split(x, "[ _]")
+```
+
+
+```{r}
+# nos podemos ahorrar la siguiente línea si adaptamos crear_tejas_doc
+articulos <- articulos_df$articulo
+textos <- articulos_df$categorias %>% map_chr( ~ paste(.x, collapse = " ")) 
+tejas_obj <- crear_tejas_str(textos, k = 1, tokenize_sp)
+firmas_wiki <- calcular_firmas_doc(tejas_obj, hash_f)
+head(firmas_wiki)
+```
+
+
+### Agrupación en cubetas {-}
+
+Ahora calculamos las cubetas y agrupamos:
+
+```{r}
+particion <- split(1:60,  ceiling(1:60 / 3))
+sep_cubetas <- separar_cubetas_fun(particion)
+sep_cubetas(firmas_wiki$firma[[1]])
+lsh_wiki <- firmas_wiki %>% 
+    mutate(cubeta = map(firma, sep_cubetas)) %>% 
+    select(-firma) %>% unnest_legacy %>% 
+    group_by(cubeta) %>% 
+    summarise(docs = list(doc_id), n = length(doc_id)) %>% 
+    mutate(n_docs = map(docs, length))
+lsh_wiki
+```
+
+Filtramos las cubetas que tienen más de un documento:
+
+```{r}
+lsh_agrupados <- lsh_wiki %>%  
+    filter(n_docs > 1)
+```
+
+Y ahora examinamos algunos de las cubetas que encontramos de 
+artículos similares según sus categorías:
+
+```{r}
+imprimir_texto <- function(indices){
+    for(ind in indices){
+        print(paste(articulos[ind]))
+        print(paste("      ", textos[ind]))
+    }
+}
+imprimir_texto(lsh_agrupados$docs[[39]])
+```
+
+```{r}
+imprimir_texto(lsh_agrupados$docs[[2615]])
+imprimir_texto(lsh_agrupados$docs[[11521]])
+imprimir_texto(lsh_agrupados$docs[[255]])
+```
+
+**Ejercicio**: explora más los grupos creados por las cubetas. Observa que pares
+similares dados pueden ocurrir en más de una cubeta (pares repetidos)
+
+
+
+### Creación de pares candidatos y falsos positivos {-}
+
+Creamos ahora todos los posibles pares candidatos: obtenemos pares
+de las cubetas y calculamos pares únicos:
+
+```{r}
+candidatos <- extraer_pares(lsh_agrupados, cubeta, docs, textos) 
+candidatos
+```
+
+Y nos queda por evaluar estos pares para encontrar la similitud exacta y
+poder descartar falsos positivos:
+
+```{r}
+candidatos <- candidatos %>% 
+  mutate(sim = map2_dbl(texto_a, texto_b, function(ta, tb){
+            sim_jaccard(tokenize_sp(ta)[[1]], tokenize_sp(tb)[[1]])
+        }))                                        
+nrow(candidatos)
+cand_filtrados <- candidatos %>% filter(sim > 0.4)
+nrow(cand_filtrados)
+quantile(cand_filtrados$sim)
+DT::datatable(cand_filtrados %>% sample_n(2000))
+```
+
+Nótese que este número de comparaciones es órdenes de magnitud más
+chico del total de posibles comparaciones del corpus completo.
+
