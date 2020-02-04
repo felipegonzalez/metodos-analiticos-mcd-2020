@@ -418,7 +418,7 @@ grandes de textos.
 En este caso, es fácil ver que para una permutación dada, la firma de un documento puede encontrarse
 de la siguiente forma:
 
-```{block2, type='comentario'}
+```{block2, type='resumen'}
 **Cálculo de la firma de un documento**
 
 1. Para la columna $d$ (documento), tomamos todos los valores de los índices igual a 1. 
@@ -560,7 +560,7 @@ h(0:11)
 
 Vamos a resolver nuestro problema simple usando funciones hash modulares:
 
-```{block2, type='comentario'}
+```{block2, type='resumen'}
 Para calcular las firmas de los documentos, en lugar de permutaciones podemos utilizar
 **funciones hash modulares** (suponemos que las tejas están numeradas) de la siguiente forma:
   $$h(x) = (ax + b) \bmod p,$$
@@ -871,8 +871,6 @@ de encontrar pares similares. En la siguiente parte discutiremos cómo decidir
 si es o no una buena aproximación. Veremos también formas de diseñar las cubetas para obtener candidatos con la
 similitud que busquemos (por ejemplo, mayor a $0.5$, mayor a $0.9$, etc.). 
 
-Antes veremos algunas posibilidades construidas a mano para lograr
-nuestro objetivo. Usaremos en estos la implementación del algoritmo por documento.
 
 ### Ejemplo: cubetas de firmas completas
 
@@ -1024,7 +1022,9 @@ wc
 
 ---
 
-```{block2, type='comentario'}
+Usando de la idea de las cubetas podemos entonces resolver eficientemente los siguientes:
+
+```{block2, type='resumen'}
 **Vecinos cercanos**
   
 - Para encontrar grupos de documentos similares podemos usar las cubetas. Nótese que un documento
@@ -1045,7 +1045,6 @@ si es necesario para eliminar pares de baja similitud que por azar cayeron en un
 - Podemos hacer clustering con los datos de pares similares, por ejemplo, con un algoritmo de detección
 de comunidades (como hicimos arriba).
 ```
-
 
 
 ## Ejemplo: pares similares de tweets
@@ -1206,7 +1205,7 @@ Aplicar este algoritmo al ejercicio \@ref(ej1).
 
 ---
 
-Podemos escribir una implementación de este algoritmo como siuge:
+Podemos escribir una implementación de este algoritmo como sigue:
 
 
 
