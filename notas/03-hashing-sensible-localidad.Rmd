@@ -26,6 +26,7 @@ más detallado de la técnica
 ```{block2 , type='resumen'}
 Supongamos que tenemos un total de $k$ minhashes, que dividimos
 en $b$ bandas de tamaño $r$, de modo que $k=br$. 
+
 - Decimos que un par de documentos *coinciden* en una banda de $r$ hashes
 si coinciden en todos los hashes de esa banda.
 - Un par de documentos es un **par candidato** si 
@@ -359,4 +360,521 @@ DT::datatable(cand_filtrados %>% sample_n(2000))
 
 Nótese que este número de comparaciones es órdenes de magnitud más
 chico del total de posibles comparaciones del corpus completo.
+
+
+
+
+
+## Medidas de distancia
+
+La técnica de LSH puede aplicarse a otras medidas de distancia, con
+otras formas de hacer hash diferente del minhash. La definición
+de distancia puedes consultarla [aquí](https://en.wikipedia.org/wiki/Metric_(mathematics))
+
+### Distancia de Jaccard {-}
+
+Puede definirse simplemente como 
+$$1-sim(a,b),$$
+donde $a$ y $b$ son conjuntos y $sim$ es la similitud de Jaccard.
+
+### Distancia euclideana {-}
+
+Es la distancia más común para vectores de números reales:
+
+Si $x=(x_1,\ldots, x_p)$ y $y=(y_1,\ldots, y_p)$ son dos vectores,
+su norma $L_2$ está dada por
+
+$$ d(x,y) = \sqrt{\sum_{i=1}^p (x_i-y_i)^2  } = ||x-y||$$
+
+### Distancia coseno {-}
+
+La distancia coseno, definida también para vectores de números reales, no toma en cuenta la magnitud de vectores, sino solamente su dirección.
+
+La similitud coseno se define primero como
+$$sim_{cos}(x,y) = \frac{<x, y>}{||x||||y||} = \cos (\theta)$$
+donde $<x, y> = \sum_{i=1}^p x_iy_i$ es el producto punto de $x$ y $y$. Esta cantidad es igual al coseno del ángulo entre los vectores $x$ y $y$ (¿por qué?).
+
+
+La
+distancia coseno es entones
+$$d_{cos}(x,y) = 1- sim_{cos}(x,y).$$
+
+Esta distancia es útil cuando el tamaño general de los vectores no nos importa. Como veremos más adelante, una aplicación usual es comparar
+documentos según las frecuencias de los términos que contienen: en este
+caso, nos importa más la frecuencia relativa de los términos que su frecuencia absoluta (pues esta última también refleja la el tamaño de los documentos).
+
+A veces se utiliza la distancia angular (medida con un número entre 0 y 180), que se obtiene de la distancia coseno, es decir,
+$$d_a(x,y) = \theta,$$
+donde $\theta$ es tal que $\cos(\theta) = d_{cos}(x,y).$
+
+### Distancia de edición
+
+Esta es una medida útil para medir distancia entre cadenas. La
+distancia de edición entre dos cadenas $x=x_1\cdots x_n$ y 
+$y=y_1\cdots y_n$ es el número mínimo de inserciones y eliminaciones (un caracter a la vez) para convertir a $x$ en $y$. 
+
+Por ejemplo, la distancia entre "abcde" y "cefgh" se calcula como
+sigue: para pasar de la primera cadena, necesitamos agregar $f$, $g$ y $h$ ($3$ adiciones), eliminar $d$, y eliminar $a,b$ ($3$ eliminaciones). La distancia entre estas dos cadenas es $6$.
+
+
+## Teoría de funciones sensibles a la localidad
+
+
+Vimos como la familia de funciones minhash puede combinarse (usando 
+la técnica de bandas) para discriminar entre pares de baja similitud
+y de alta similitud.
+
+En esta parte consideramos otras posibles familias de funciones para lograr lo mismo bajo otras medidas de distancia. Veamos las características básicas de las funciones $f$ del minhash:
+
+ 1. Cuando la distancia entre dos elementos $x,y$ es baja (similitud alta),
+ entonces una colisión $f(x)=f(y)$ tiene probabilidad alta.
+ 2. Podemos escoger varias funciones  $f_1,\ldots,f_k$ con la propiedad anterior, de manera independiente, de forma que es posible calcular (o acotar)
+ la probabilidad de $f_i(x)=f_i(y)$ .
+ 3. Las funciones tienen que ser relativamente fáciles de calcular (comparado con calcular todos los posibles pares y sus distancias directamente).
+ 
+ 
+## Funciones sensibles a la localidad
+
+
+```{block2, type="resumen"}
+Sean $d_1<d_2$ dos valores (que interpretamos como distancias).
+Una familia ${\cal F}$ es una familia $d_1,d_2,p_1,p_2$,  sensible a localidad
+(con $p_1>p_2$) cuando para cualquier par de elementos $x,y$,
+
+1. Si $d(x,y)\leq d_1$, entonces la probabilidad  $P(f(x)=f(y))\geq p_1$.
+2. Si $d(x,y)\geq d_2$, entonces $P(f(x)=f(y))\leq p_2$
+
+  Nótese que las probabilidades están dadas sobre la selección de $f$.
+```
+  
+
+Estas condiciones se interpretan como sigue: cuando $x$ y $y$ están
+suficientemente cerca ($d_1$), la probabilidad de que sean mapeados al mismo valor
+por una función $f$ de la familia es alta.  Cuando $x$ y $y$ están lejos
+$d_2$, entonces, la probabilidad de que sean mapeados al mismo valor es baja.
+Podemos ver una gráfica:   
+
+
+```{r, echo = FALSE}
+x_1 <- seq(0, 1, 0.01)
+x_2 <- seq(2, 3, 0.01)
+y_1 <- -1*x_1 + 2.5
+y_2 <- 2/x_2
+dat_g <- tibble(x=c(x_1,x_2),y=c(y_1,y_2))
+ggplot(dat_g, aes(x=x, y=y)) + geom_point(size=0.5) +
+  geom_vline(xintercept=c(1,2), linetype="dotted") +
+  geom_hline(yintercept=c(1,1.5), linetype="dotted") +
+  scale_x_continuous(breaks = c(1,2), labels = c('d_1','d_2')) +
+  scale_y_continuous(breaks = c(1,1.5), labels = c('p_2','p_1')) +
+  labs(x = 'Distancia', y ='Probabilidad de candidato')
+```
+
+### Distancia Jaccard
+
+Supongamos que tenemos dos documentos $x,y$. Si ponemos por ejemplo
+$d_1=0.2$ y $d_2= 0.5$, tenemos que 
+si $d(x,y) = 1-sim(x,y) \leq 0.2$, despejando tenemos
+$sim(x,y)\geq 0.8$, y entonces
+$$P(f(x) = f(y)) = sim(x,y) \geq 0.8$$
+Igualmente, si $d(x,y)=1-sim(x,y) \geq 0.5$, entonces
+$$P(f(x) = f(y)) = sim(x,y) \leq 0.5$$
+de modo que la familia de minhashes es $(0.2,0.5,0.8,0.5)$ sensible a la
+localidad
+
+```{block2, type="resumen"}
+Para cualquier $d_1 < d_2$,
+la familia de funciones minhash es una familia 
+$(d_1, d_2, 1-d_1, 1-d_2)$ sensible a la localidad para cualquier
+$d_1\leq d_2$.
+```
+
+## Amplificación de familias sensibles a la localidad
+
+Con una familia sensible a la localidad es posible usar la técnica
+de bandas para obtener la discriminación de similitud que nos interese.
+
+Supongamos que ${\cal F}$ es una familia $(d_1, d_2, p_1, p_2)$-sensible
+a la localidad. Podemos usar **conjunción** de ${\cal F}'$ para construir
+otra familia sensible a la localidad.
+
+Sea $r$ un número entero. Una función $f\in {\cal F}'$ se construye
+tomando $f = (f_1,f_2,\ldots, f_r)$, con $f_i$ seleccionadas al
+azar de manera independiente de la familia original, de forma
+que $f(x)=f(y)$ si y sólo si $f_i(x)=f_i(y)$ para toda $i$. Esta construcción
+corresponde a lo que sucede dentro de una banda de la técnica de LSH.
+
+La nueva familia ${\cal F}'$ es $(d_1,d_2,p_1^r,p_2^r)$ sensible a la localidad. Nótese que las probabilidades siempre se hacen más chicas
+cuando incrementamos $r$, lo que hace más fácil discriminar pares
+con similitudes en niveles bajos.
+
+
+Podemos también hacer **disyunción** de una familia  ${\cal F}$. En este
+caso, decimos que $f(x)=f(y)$ cuando al menos algún
+$f_i(x)=f_i(y)$.
+
+En este caso, la disyunción da una familia
+$(d_1,d_2,1-(1-p_1)^b,1-(1-p_2)^b)$ sensible a la localidad. Esta construcción
+es equivalente a construir varias bandas.
+
+La idea general es ahora:
+
+```{block2, type="resumen"}
+- Usando **conjunción**, podemos construir una familia donde
+la probabilidad $p_2^r$ sea mucho más cercana a cero que
+$p_1^r$ (en términos relativos). 
+- Usando **disyunción**, podemos construir una familia donde
+la probabilidad $1-(1-p_1^r)^b$ permanece cercana a $1$,
+pero $1-(1-p_2^r)^b$ está cerca de cero.
+- Combinando estas operaciones usando la técnica de bandas
+podemos construir una famlia que discrimine de manera distinta
+entre distancias menores a $d_1$ y distancias mayores a $d_2$.
+- El costo incurrido es que tenemos que calcular más funciones para
+discriminar mejor.
+```
+
+### Ejercicio {-}
+Supongamos que tenemos una familia $(0.2, 0.6, 0.8, 0.4)$ sensible
+a la localidad. Si combinamos con conjunción 4 de estas funciones,
+obtenemos una familia
+$$(0.2, 0.6, 0.41, 0.026)$$
+La proporción de falsos positivos es chica, pero la de falsos negativos
+es grande. Si tomamos 8 de estas funciones (cada una compuesta de
+cuatro funciones de la familia original) y hacemos conjunción, obtenemos una familia
+
+$$(0.2, 0.6, 0.98, 0.19)$$
+
+En esta nueva familia, tenemos que hacer $40$ veces más trabajo para
+tener esta amplificación.
+
+---
+
+## Distancia coseno e hiperplanos aleatorios
+
+Construimos ahora LSH para datos numéricos, y comenzaremos
+con la distancia coseno. Lo primero que necesitamos es
+una familia sensible a la localidad para la distancia coseno.
+
+Consideremos dos vectores, y supongamos que el ángulo entre ellos
+es chico. Si escogemos un hiperplano al azar, lo más
+probable es que queden del mismo lado del hiperplano. En el caso extremo, 
+si los vectores
+apuntan exactamente en la misma dirección, entonces la probabilidad es $1$.
+
+Sin embargo, si el ángulo entre estos vectores es grande, entonces lo más probable es que queden separados por un hiperplano escogido al azar. Si los vectores son ortogonales (máxima distancia coseno posible), entonces
+esta probabilidad es $0$.
+
+Esto sugiere construir una familia sensible a la localidad para
+la distancia coseno de la siguiente forma:
+
+- Tomamos un vector al azar $v$.
+- Nos fijamos en la componente de la proyección de $x$ sobre $v$ 
+- Ponemos $f_v(x)=1$ si esta componente es positiva, y
+$f_v(x)=-1$ si esta componente es negativa.
+- Podemos poner simplemente:
+$$ f_v(x) = signo (<x, v>)$$
+
+**Recordatorio**: La componente de la proyección de $x$ sobre $v$ está
+dada por el producto interior de $x$ y $v$ normalizado:
+$$\frac{1}{||v||}<x, v>,$$
+y su signo es el mismo de $<x,v>$.
+
+
+```{block2, type="resumen"}
+La familia descrita arriba (hiperplanos aleatorios) 
+es $(d_1,d_2, (180-d_1)/180, d_2/180)$
+  sensible a la localidad para la distancia angular.
+```
+
+Vamos a dar un argumento del cálculo: supongamos que el ángulo entre $x$ y $y$ es $d=\theta$, es decir,
+la distancia angular entre $x$ y $y$ es $\theta$.  
+
+Consideramos el plano $P$ que pasa por el origen y por $x$ y $y$. 
+Si escogemos un vector al azar (cualquier dirección igualmente probable), el vector produce un hiperplano perpendicular (son
+los puntos $z$ tales que $<z,v>=0$)
+que corta al plano $P$
+en dos partes.
+Todas las direcciones de corte son igualmente probables, así
+que la probabilidad de que la dirección de corte separe a $x$ y $y$
+es igual a $2\theta /360$ (que caiga en el cono generado por $x$ y $y$).
+Si la dirección de corte separa a $x$ y $y$, entonces sus valores
+$f_v(x)$ y $f_v(y)$ no coinciden, y coinciden si la dirección
+no separa a $x$ y $y$. Así que:
+
+1. $d(x,y)=d_1=\theta$, entonces $P(f(x)=f(y)) = 1-d_1/180.$
+
+Por otro lado, 
+
+2. $d(x,y)=d_2$, entonces  $P(f(x)\neq f(y)) = d_2/180.$
+
+---
+
+### Ejemplo: similitud coseno por fuerza bruta {-}
+
+Comenzamos con un ejemplo simulado.
+
+```{r}
+set.seed(101)
+mat_1 <- matrix(rnorm(600 * 2000) + 3, ncol = 2000)
+mat_2 <- matrix(rnorm(1200 * 2000) + 0.2, ncol = 2000)
+datos_tbl_vars <- rbind(mat_1, mat_2)  %>%
+  data.frame %>% 
+  add_column(id_1 = 1:1800, .before = 1)
+head(datos_tbl_vars[,1:5])
+```
+
+Tenemos entonces $2000$ variables distintas y $1800$ casos, y nos
+interesa filtrar aquellos pares de similitud alta.
+
+Definimos nuestra función de distancia
+
+```{r}
+norma <- function(x){
+  sqrt(sum(x ^ 2))
+}
+dist_coseno <- function(x, y){
+  1 - sum(x*y) / (norma(x) * norma(y))
+}
+```
+
+
+Y calculamos todas las posibles distancias (normalmente
+ **no** queremos hacer esto, pero lo hacemos aquí para
+ comparar):
+
+```{r}
+datos_tbl <- datos_tbl_vars %>%
+  pivot_longer(-id_1, names_to = "variable", values_to = "valor") %>% 
+  group_by(id_1) %>%
+  arrange(variable) %>%
+  summarise(vec_1 = list(valor))
+system.time(
+pares_tbl <- datos_tbl %>% 
+    crossing(datos_tbl %>% 
+        rename(id_2 = id_1, vec_2 = vec_1)) %>%
+    filter(id_1 < id_2) %>%
+    mutate(dist = map2_dbl(vec_1, vec_2, dist_coseno))
+)
+pares_tbl %>% head
+```
+
+La distribución de distancias sobre todos los pares es la siguiente:
+(¿por qué observamos este patrón? Recuerda que esta gráfica
+ representa pares:
+
+```{r, fig.width=5, fig.asp = 0.8}
+qplot(pares_tbl$dist, binwidth = 0.01)
+```
+
+Y supongamos que queremos encontrar vectores con distancia
+coseno menor a $0.15$ (menos de unos $30$ grados). El número de pares que satisfacen
+esta condicion son:
+
+
+```{r}
+sum(pares_tbl$dist < 0.15)
+```
+
+### Ejemplo: LSH planos aleatorios {-}
+
+Usamos $300$ funciones hash:
+
+```{r}
+crear_hash_sketch <- function(dim) {
+  v <- rnorm(dim)
+    function(x){
+        ifelse(sum(v*x) >= 0, 1L, -1L) 
+    }
+}
+set.seed(101021)
+hash_f <- map(1:300, ~ crear_hash_sketch(dim = 2000)) 
+
+```
+
+Por ejemplo, la firma del primer elemento es:
+
+```{r}
+z <- datos_tbl$vec_1[[1]]
+map_int(hash_f, ~ .x(z))
+```
+
+
+Y ahora calculamos la firma para cada elemento:
+
+```{r}
+calculador_hashes <- function(hash_f){
+  function(z) {
+    map_int(hash_f, ~ .x(z))
+  }
+}
+calc_hashes <- calculador_hashes(hash_f)
+hash_tbl <- datos_tbl %>%
+  mutate(firma = map(vec_1, ~ calc_hashes(.x))) %>% 
+  select(id_1, firma)
+hash_tbl
+```
+
+
+Vamos a amplificar la familia de hashes. En este caso,
+escogemos $20$ bandas de $10$ hashes cada una.
+
+```{r, fig.width=5, fig.asp=0.8}
+b <- 30
+r <- 10
+f_1 <- function(x){
+    1-(1-((180-x)/180)^r)^b
+}
+curve(f_1, 0, 180)
+abline(v=30)
+```
+
+
+### Ejemplo: agrupar por cubetas para LSH {-}
+
+Construimos las cubetas, igual como hacemos en minhashing
+
+```{r}
+particion <- split(1:300, ceiling(1:300 / r))
+separar_cubetas_fun <- function(particion){
+    function(firma){
+        map_chr(particion, function(x){
+            prefijo <- paste0(x, collapse = '')
+            cubeta <- paste(firma[x], collapse = "/")
+            paste(c(prefijo, cubeta), collapse = '|')
+        })
+    }
+}
+sep_cubetas <- separar_cubetas_fun(particion)
+cubetas_tbl <- hash_tbl %>%
+  mutate(cubeta = map(firma, sep_cubetas)) %>% 
+  select(-firma) %>% 
+  unnest_legacy %>% 
+  group_by(cubeta) %>% 
+  summarise(ids = list(id_1), n = length(id_1)) %>% 
+  arrange(desc(n))
+```
+
+Filtramos las cubetas con más de un caso
+
+```{r}
+cubetas_tbl <- cubetas_tbl %>% filter(n > 1)
+cubetas_tbl
+```
+
+
+Y ahora extraemos los pares similares
+
+```{r}
+pares_candidatos <- lapply(cubetas_tbl$ids, function(x){
+  combn(sort(x), 2, simplify = FALSE)}) %>% 
+  flatten %>% unique %>% 
+  transpose %>% lapply(as.integer) %>% as.data.frame
+names(pares_candidatos) <- c('id_1','id_2')
+head(pares_candidatos)
+```
+
+
+### Ejemplo: filtrar y evaluar resultados {-}
+
+Y ahora evaluamos nuestros resultados. En primer lugar, el 
+número de pares reales y de candidatos es
+
+```{r}
+pares_reales <- filter(pares_tbl, dist < 0.15) %>%
+                select(id_1, id_2)
+nrow(pares_reales)
+nrow(pares_candidatos)
+```
+
+Podemos evaluar con la precisión, que es el porcentaje de los
+pares candidatos que son reales (si este número es muy bajo,
+puede ser que estemos haciendo demasiado cómputo):
+
+
+```{r, message = FALSE}
+prec <- nrow(inner_join(pares_candidatos, pares_reales)) / 
+  nrow(pares_candidatos)
+prec %>% round(4)
+```
+
+
+Y ahora calculamos el recall o sensibilidad (porcentaje
+de pares similares que recuparamos):
+
+```{r, message = FALSE}
+sens <- nrow(inner_join(pares_candidatos, pares_reales)) / 
+  nrow(pares_reales)
+sens %>% round(4)
+```
+
+
+Finalmente, podemos calcular la distancia exacta entre los
+pares candidatos, y filtrar para obtener precisión igual a 1 
+(con la misma sensibilidad).
+
+---
+
+
+**Observación*: es posible, en lugar de usar vectores con dirección
+aleatoria $v$ escogidos al azar como arriba (con la distribución normal), hacer menos cálculos escogiendo vectores $v$
+cuyas entradas son solamente $1$ y $-1$. El cálculo del producto
+punto es simplemente multiplicar por menos si es necesario los
+valores de los vectores $x$ y sumar.
+
+
+## LSH para distancia euclideana.
+
+Para distancia euclideana usamos el enfoque de proyecciones
+aleatorias en cubetas.
+La idea general es que tomamos una línea al azar en el espacio
+de entradas, y la dividimos en cubetas de manera uniforme. El valor
+hash de un punto $x$ es el número de cubeta donde cae la proyección de $x$.
+```{block2, type='resumen'}
+Supogamos que tomamos como $a$ el ancho de las cubetas.
+La familia de proyecciones aleatorias por cubetas es
+una familia
+$(a/2, 2a, 1/2, 1/3)$-sensible a la localidad para la distancia 
+euclideana.
+```
+Supongamos que dos puntos $x$ y $y$ tienen distancia euclideana
+$d = a/2$. Si proyectamos perpendicularmente sobre la línea
+escogida al azar, la distancia entre las proyecciones es menor
+a $a/2$, de modo la probabilidad de que caigan en la misma
+cubeta es al menos $1/2$. Si la distancia es menor, entonces la probabilidad
+es más grande aún:
+1. Si $d(x,y)\leq a/2$ entonces $P(f(x)=f(y))\geq 1/2$.
+Por otro lado, si la distancia es mayor a $2a$, entonces la única
+manera de que los dos puntos caigan en una misma cubeta es
+que la distancia de sus proyecciones sea menor a $a$. Esto sólo
+puede pasar si el ángulo entre el vector que va de $x$ a $y$ y
+la línea escogida al azar es mayor de  $60^{\circ}$ a $90^{\circ}$. Como
+$\frac{90^{\circ}-60^{\circ}}{90^{\circ}-0^{\circ}} = 1/3$, entonces la probabilidad que que
+caigan en la misma cubeta no puede ser más de $1/3$.
+1. Si $d(x,y)\geq 2a$, entonces $P(f(x)=f(y))\leq 1/3$.
+Escoger $a$ para discriminar las distancias que nos interesa,
+y luego amplificar la familia para obtener tasas de falsos
+positivos y negativos que sean aceptables.
+
+## Joins por similitud
+
+Otro uso de las técnicas del LSH nos permita hacer
+uniones (*joins*) por similitud. La idea es la siguiente:
+
+- Tenemos una tabla A, con una columna A.x que es un texto, por ejemplo, o un vector de números, etc.
+- Tenemos una tabla B, con una columna B.x que es del mismo tipo que A.x
+- Queremos hacer una unión de A con B con la llave x, de forma que 
+queden pareados todos los elementos tales que $sim(A.x_i, A.y_j)$.
+
+Un ejemplo es pegar dos tablas de datos de películas de 
+fuentes distintas mediante el título (que a veces varía en cómo está escrito, de manera que no podemos hacer un join usual), o títulos
+de pláticas en diferentes conferencias, etc.
+
+Usando LSh podemos hacer un *join aproximado por similitud*. La
+idea es la misma que antes: 
+
+1. Calculamos cubetas de la misma forma para cada tabla (mismos hashes y bandas)
+2. Unimos las cubetas de las dos fuentes
+3. Los pares candidatos son todos los pares (uno de A y uno de B) que
+caen en la misma cubeta.
+
+
 
