@@ -7,67 +7,67 @@ output: html_notebook
 ## Cargar datos en cluster
 
 Normalmente, este paso no lo hacemos en nuestra sesión de análisis: los datos
-están distribuidos en un cluster originalmente. Para nuestro ejemplo, limpiamos
-y cargamos los datos en memoria:
-
-```{r}
-library(tidyverse)
-limpiar <- function(lineas,...){
-  df_lista <- str_split(lineas, " ") %>% 
-    keep(function(x) x[1] != '#') %>%
-    transpose %>%
-    map(function(col) as.character(col)) 
-  df <- data_frame(articulo = df_lista[[1]], 
-                   categorias = df_lista[[2]]) 
-  df
-}
-filtrado <- read_lines_chunked("../../datos/similitud/wiki-100000.txt",
-                    skip = 1, callback = ListCallback$new(limpiar))
-```
+están distribuidos en un cluster originalmente. Aunque podemos leer en este caso
+los datos a R y después copiarlos a Spark, esto en general es poco eficiente
+y a veces no es posible. Leeremos directamente al cluster.
 
 Los datos completos están [aquí](https://s3.amazonaws.com/wiki-large/article_categories_en.ttl)
 
-Consideramos los datos ya tokenizados (los tokens son las categorías):
+Iniciamos cluster un cluster local (en general nos conectamos a un cluster real):
 
-```{r}
-articulos_df <- filtrado %>% bind_rows
-articulos_df
-```
-
-
-Y registramos en el cluster (en este caso, corremos los scripts localmente):
-
-```{r}
+```{r, message=FALSE}
+library(tidyverse)
 library(sparklyr)
+#library(arrow)
 config <- spark_config()
 # configuración para modo local:
 config$`sparklyr.shell.driver-memory` <- "2G" # para poder hacer collect de pares más adelante
-sc <- spark_connect(master = "local", config = config)
-# normalmente no copiamos de nuestra sesión de R a un cluster! Para este ejemplo
-# con datos chicos es posible:
-articulos_wiki_tbl <- copy_to(sc, articulos_df, "articulos_wiki", overwrite = TRUE) 
-articulos_wiki_tbl
 ```
 
-Agrupamos los tokens en una lista:
 
 ```{r}
-art_agr <- articulos_wiki_tbl %>%
-        group_by(articulo) %>%
-        summarise(lista = collect_list(categorias)) 
+sc <- spark_connect(master = "local", config = config)
+```
+
+
+```{r}
+options(scipen = 999)
+ruta <- "../../datos/similitud/wiki-100000.txt"
+articulos_tbl <- spark_read_csv(sc, 
+  name = "articulos_df", 
+  path = ruta, 
+  columns = c("articulo", "categoria"),
+  header =FALSE,
+  delimiter = " ",
+  repartition = 6) 
+head(articulos_tbl)
+articulos_tbl %>% tally()
+```
+
+
+```{r}
+articulos_tbl <- articulos_tbl %>% 
+  #filter(rlike(line, "^[^#]")) %>% 
+  group_by(articulo) %>% 
+  summarise(categorias = collect_list(categoria))
+articulos_tbl %>% sdf_sample(0.001)
 ```
 
 Y binarizamos (la representación para usar la implementación de spark es
 de matriz rala: 1 cuando el token/shingle pertenece al documento, y 0 si no):
 
 ```{r}
-art_bin <- art_agr %>% 
-        ft_count_vectorizer('lista', 'vector', binary = TRUE) 
+art_bin <- articulos_tbl %>% 
+        ft_count_vectorizer('categorias', 'vector_cat', binary = TRUE) 
+art_bin %>% sdf_sample(0.001)
 ```
+
+
+Ahora definimos el número de hashes
 
 ```{r}
 # estimator
-lsh_wiki_estimator <- ft_minhash_lsh(sc, 'vector', 'hashes', 
+lsh_wiki_estimator <- ft_minhash_lsh(sc, "vector_cat", "hashes", 
                            seed = 1227,
                            num_hash_tables = 5)
 ```
@@ -80,10 +80,10 @@ art_bin %>% head(5)
 
 Podemos encontrar vecinos cercanos
 ```{r}
-vec_1 <- art_bin %>% filter(articulo =='Alabama') %>% pull(vector)
+vec_1 <- art_bin %>% filter(articulo =='Alabama') %>% pull(vector_cat)
 similares <- ml_approx_nearest_neighbors(lsh_wiki_trans, 
               art_bin, vec_1[[1]], num_nearest_neighbors = 10) %>% 
-              select(articulo, lista, distCol)
+              select(articulo, categorias, distCol)
 print(similares %>% collect)
 ```
 
