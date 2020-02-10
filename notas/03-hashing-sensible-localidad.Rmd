@@ -716,7 +716,7 @@ hash_tbl
 
 
 Vamos a amplificar la familia de hashes. En este caso,
-escogemos $20$ bandas de $10$ hashes cada una.
+escogemos $30$ bandas de $10$ hashes cada una.
 
 ```{r, fig.width=5, fig.asp=0.8}
 b <- 30
@@ -815,7 +815,7 @@ pares candidatos, y filtrar para obtener precisión igual a 1
 ---
 
 
-**Observación*: es posible, en lugar de usar vectores con dirección
+**Observación**: es posible, en lugar de usar vectores con dirección
 aleatoria $v$ escogidos al azar como arriba (con la distribución normal), hacer menos cálculos escogiendo vectores $v$
 cuyas entradas son solamente $1$ y $-1$. El cálculo del producto
 punto es simplemente multiplicar por menos si es necesario los
