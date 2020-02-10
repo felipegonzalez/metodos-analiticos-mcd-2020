@@ -227,7 +227,7 @@ limpiar <- function(lineas,...){
     keep(function(x) x[1] != '#') %>%
     transpose %>%
     map(function(col) as.character(col)) 
-  df <- data_frame(articulo = df_lista[[1]], 
+  df <- tibble(articulo = df_lista[[1]], 
                    categorias = df_lista[[2]]) 
   df
 }
@@ -236,6 +236,7 @@ filtrado <- read_lines_chunked('../datos/similitud/wiki-100000.txt',
 articulos_df <- filtrado %>% bind_rows %>%
                 group_by(articulo) %>%
                 summarise(categorias = list(categorias))
+nrow(articulos_df)
 ```
 
 ```{r}

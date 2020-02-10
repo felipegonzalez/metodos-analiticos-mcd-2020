@@ -273,7 +273,7 @@ número del primer renglón que es distinto de $0$.
 
 Considera la matriz de tejas-documentos para cuatro documentos y cinco tejas
 dada a continuación, con las permutaciones $(2,3,4,5,1)$ (indica que el renglón
-$2$ va al $1$, el $3$ a $2$, el $1$ al $5$, etc.) y $(2,5,3,1,4)$. Calcula el descriptor definido arriba.
+$1$ va al $2$, el $2$ a $3$, el $5$ al $1$, etc.) y $(2,5,3,1,4)$. Calcula el descriptor definido arriba.
 
 ```{r, echo = FALSE}
 mat <- matrix(c(c(1,0,0,1), c(0,0,1,0), 
@@ -283,6 +283,14 @@ colnames(mat) <- c('d_1','d_2','d_3','d_4')
 rownames(mat) <- c('abc', 'ab ','xyz','abx','abd')
 mat
 ```
+
+```{r, echo=FALSE, include=FALSE}
+perm_1 <- c(2,3,4,5,1)
+perm_2 <- c(2,5,3,1,4)
+apply(mat[order(perm_1), ]==1, 2, which) %>% map(min)
+apply(mat[order(perm_2), ]==1, 2, which) %>% map(min)
+```
+
 
 
 #### Ejemplo {-}
@@ -322,6 +330,13 @@ firmas_perms <- calc_firmas_perm(dtejas_tbl, permutaciones)
 firmas_perms
 ```
 
+```{r, echo = FALSE, include = FALSE}
+# para nuestro ejemplo simple
+perms_ejemplo <- list(perm_1, perm_2)
+ejemplo_tbl <- as_tibble(mat)
+names(ejemplo_tbl) <- c("doc_1", "doc_2", "doc_3", "doc_4")
+calc_firmas_perm(ejemplo_tbl, perms_ejemplo)
+```
 
 
 ---
