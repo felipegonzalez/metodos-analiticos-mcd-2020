@@ -7,7 +7,6 @@ output: html_notebook
 ```{r, message=FALSE}
 library(tidyverse)
 library(sparklyr)
-library(arrow)
 ```
 
 Abrimos una conexión local de spark:
