@@ -1,0 +1,234 @@
+---
+title: "Tarea 3. LSH y Entity matching"
+output: html_notebook
+---
+
+
+En este ejemplo veremos como usar LSH 
+para encontrar registros
+que se refieren al mismo elemento pero están en distintas tablas, 
+y pueden diferir en cómo están registrados (entity matching). Vamos a
+usar funciones del paquete *textreuse*, aunque puedes usar
+también las funciones de las notas.
+
+## Datos
+
+Los [datos](https://dbs.uni-leipzig.de/de/research/projects/object_matching/fever/benchmark_datasets_for_entity_resolution) para este ejempo particular trata con dos fuentes bibliográficas (DBLP, ACM)
+de artículos y conferencias de cómputo. La carpeta del repositorio
+es datos/similitud/entity-matching. **El objetivo es parear las dos fuentes para
+identificar artículos que se presenteron en las dos referencias.**
+
+
+```{r, warning=FALSE, message=FALSE}
+library(tidyverse)
+acm <- read_csv('../../datos/similitud/entity_matching/ACM.csv')
+dbl <- read_csv('../../datos/similitud/entity_matching/DBLP2.csv')
+```
+
+```{r}
+head(acm)
+head(dbl)
+nrow(acm)
+nrow(dbl)
+```
+
+**Pregunta 1**: ¿si intentas una aproximación por fuerza bruta, cuántas comparaciones
+tendrías que hacer? Si cada tabla contuviera unos 2 millones de documentos, ¿qué tan 
+factible sería hacer todas las posibles comparaciones?
+
+## Shingling y hashing
+
+Vamos a poner todos los documentos en una sola lista. Aunque al final
+encontremos elementos de la misma fuente en la misma cubeta, podemos
+filtrar estos.
+
+```{r}
+acm_1 <- acm %>% select(id, title, authors) %>% 
+  mutate(texto = paste(title, authors, sep = "    ")) %>% 
+  mutate(origen = "ACM") %>% 
+  mutate(id = as.character(id))
+dbl_1 <- dbl %>% select(id, title, authors) %>% 
+  mutate(texto = paste(title, authors, sep = "    ")) %>% 
+  mutate(origen = "DBL")
+acm_dbl <- bind_rows(acm_1, dbl_1)
+```
+
+**Pregunta 2**: ¿por qué definimos el texto incluyendo algún espacio en blanco entre título y autor?
+¿Qué otra estrategia se te ocurre para convertir en tejas?
+
+```{r}
+# función de las notas
+calcular_tejas <- function(x, k = 2, lowercase = FALSE){
+  tokenizers::tokenize_character_shingles(x, n = k, lowercase = lowercase,
+    simplify = TRUE, strip_non_alpha = FALSE)
+}
+```
+
+En este caso escogemos 30 hashes agrupados en 10 bandas,
+shingles de tamaño 4, y usamos sólo título y autor.
+
+
+```{r}
+library(textreuse)
+set.seed(88345)
+# usar funciones de textreuse (que hace hash de las tejas directamente)
+funciones_minhash <- minhash_generator(30)
+nombres <- c(acm_1$id, dbl_1$id)
+texto <- c(acm_1$texto, dbl_1$texto)
+names(texto) <- nombres
+# el siguiente devuelve un objeto con los minhashes calculados
+corpus <- TextReuseCorpus(text = texto,
+  minhash_func = funciones_minhash,
+  tokenizer = calcular_tejas, 
+  k = 4, lowercase = TRUE,
+  progress = FALSE, skip_short = FALSE)
+```
+
+Por ejemplo, para el primer documento tenemos:
+
+```{r}
+corpus[[1]]$content
+corpus[[1]]$minhashes
+```
+
+Calculamos cubetas:
+
+```{r}
+lsh_conf <- lsh(corpus, bands = 10) 
+lsh_conf
+```
+
+
+
+**Pregunta 3**: examina la tabla *lsh_conf*. ¿Qué significa cada columna?
+Describe cómo se construye la columna *buckets* a partir de
+los minhashes.
+
+
+## Examinar pares candidatos
+
+Agrupamos cubetas y extraemos pares similares. En *textreuse* se puede
+hacer como sigue:
+
+```{r}
+candidatos <- lsh_candidates(lsh_conf)
+nrow(candidatos)
+```
+
+Calculamos también la similitud de jaccard exacta para cada par.
+
+```{r}
+candidatos <- lsh_compare(candidatos, corpus, jaccard_similarity)
+candidatos
+```
+
+**Pregunta 4**: explica cómo se calcula la columna *score* en la tabla de candidatos.
+
+```{r}
+candidatos <- candidatos %>% arrange(desc(score))
+candidatos
+```
+
+Podemos ver el contenido de un par de esta manera:
+
+```{r}
+corpus[["181566"]]$content
+corpus[["journals/sigmod/MedeirosP94"]]$content
+```
+
+
+**Pregunta 5**: ¿Cuántas comparaciones tuviste qué hacer (cálculos de similitud)? Compara con el total
+de comparaciones que es posible hacer entre estas dos tablas.
+
+
+Ahora eliminamos candidatos que aparecieron en la misma tabla (misma referencia bibliográfica):
+
+
+```{r}
+candidatos <-  candidatos %>% left_join(acm_dbl %>% select(id, origen) %>% rename(a = id, origen_a = origen))
+candidatos <-  candidatos %>% left_join(acm_dbl %>% select(id, origen) %>% rename(b = id, origen_b = origen))
+candidatos_dif <- candidatos %>% filter(origen_a != origen_b)
+```
+
+
+**Pregunta 6**: 
+¿Cuántos pares candidatos obtuviste?
+Examina algunos elementos con similitud uno o cercana a uno. ¿Se refieren al
+mismo artículo en las dos fuentes? 
+
+**Pregunta 7**: 
+¿Cuántos pares candidatos obtienes si usas 30 hashes con 5 o 30 bandas, en
+lugar de 10 bandas? Explica cuál es la desventaja de usar demasiadas
+bandas, y cuál es la desventaja de usar muy pocas bandas.
+
+
+## Examinar resultados
+
+**Pregunta 8**: Ahora considera los elementos 
+con similitud más baja que capturaste. Examina varios casos y concluye
+si hay pares que no se refieren al mismo artículo, y por qué.
+
+
+
+**Pregunta 9**: propón un punto de corte de similitud para la tabla de arriba, según tus
+observaciones de la pregunta anterior.
+
+```{r}
+# código filtrando con score > tu_numero, y examinando los elementos
+# de similitud más baja
+candidatos_filt <- filter(candidatos_dif, score > )
+tail(candidatos_filt)
+```
+
+**Pregunta 10**: ¿cuántos pares candidatos obtuviste al final?
+
+
+## Evaluación de resultados
+
+ Evalúa tus resultados con las respuestas
+correctas, que están en la carpeta de los datos.
+
+
+```{r}
+mapping <- read_csv("../../datos/similitud/entity_matching/DBLP-ACM_perfectMapping.csv")
+```
+
+Crea variables apropiadas para hacer join de los verdaderos matches con tus candidatos:
+
+```{r}
+candidatos_filt <- candidatos_filt %>% mutate(idDBLP = ifelse(str_detect(a, "^[0-9]*$"), b, a))
+candidatos_filt <- candidatos_filt %>% mutate(idACM = ifelse(str_detect(a, "^[0-9]*$"), a, b))
+```
+
+Podemos calcular el número de pares verdaderos que son candidatos (recuperados), el número de pares
+candidatos que son candidatos pero no son pares verdaderos, por ejemplo:
+
+```{r}
+mapping <- mapping %>% mutate(idACM = as.character(idACM))
+ambos <- inner_join(candidatos_filt, mapping)
+nrow(candidatos_filt)
+nrow(ambos)
+```
+
+*Pregunta 11 *: Evalúa precisión y recall de tu método. Para distintas aplicaciones que te
+puedas imaginar, ¿qué tan buenos son estos resultados? ¿Qué consideras
+mejor en este punto, tener precisión o recall alto? 
+
+```{r}
+precision <- 
+precision
+recall <- 
+recall
+```
+
+
+## Análisis de errores
+
+Considera algunos casos que fallamos en recuperar como candidatos
+
+```{r}
+anti_join(mapping, candidatos_filt) %>% left_join(candidatos_filt)
+```
+
+**Pregunta 11**: Considerando estos errores, ¿qué se te ocurre para mejorar el método?
+
