@@ -781,11 +781,11 @@ mean(firmas_doc$doc_3 == firmas_doc$doc_4)
 Ahora buscaremos tweets similares en una colección de un [dataset de
 kaggle](https://www.kaggle.com/rgupta09/world-cup-2018-tweets/home?utm_medium=email&utm_source=mailchimp&utm_campaign=datanotes-20180823).
 
-```{r, message=FALSE}
+```{r}
 ruta <- "../datos/FIFA.csv"
 gc_ruta <- "https://storage.cloud.google.com/metodos-analiticos/FIFA.csv"
 if(!file.exists(ruta)){
-    download.file(gc_ruta, ruta)
+    stop("Es necesario bajar manualmente el archivo de la liga gc_ruta y copiarlo a ../datos/FIFA.csv")
 } else {
     fifa <- read_csv(ruta)
 }
