@@ -1,0 +1,154 @@
+---
+title: "Tarea LSH: Entity matching"
+output: html_notebook
+---
+
+
+
+En este ejemplo veremos como usar LSH 
+para encontrar registros
+que se refieren al mismo elemento pero están en distintas tablas, 
+y pueden diferir en cómo están registrados (entity matching). Vamos a
+usar spark para este ejemplo.
+
+## Datos
+
+Los [datos](https://dbs.uni-leipzig.de/de/research/projects/object_matching/fever/benchmark_datasets_for_entity_resolution) para este ejempo particular trata con dos fuentes bibliográficas (DBLP, ACM)
+de artículos y conferencias de cómputo. La carpeta del repositorio
+es datos/similitud/entity-matching. **El objetivo es parear las dos fuentes para
+identificar artículos que se presenteron en las dos referencias.**
+
+
+```{r, warning=FALSE, message=FALSE}
+library(tidyverse)
+library(sparklyr)
+config <- spark_config()
+# configuración para modo local, ajustar la memoria del driver solamente
+config$`sparklyr.shell.driver-memory` <- "1G"
+sc <- spark_connect(master = "local", config = config)
+sc$config
+```
+
+
+
+```{r}
+acm <- spark_read_csv(sc, name = "acm",
+  path = "../../datos/similitud/entity_matching/ACM.csv",
+  memory = TRUE, repartition = 12, overwrite = TRUE)
+dbl <- spark_read_csv(sc, name = "dbl",
+  path = "../../datos/similitud/entity_matching/DBLP2.csv",
+  memory = TRUE, repartition = 12, overwrite = TRUE)
+# nota: si quieres pasar estas tablas de spark a R
+# puedes hacer acm_tbl <- collect(acm), por ejemplo.
+# pero si los datos no son chicos esto no hay que hacerlo
+```
+
+```{r}
+head(acm)
+head(dbl)
+acm %>% tally()
+dbl %>% tally()
+```
+
+
+## Shingling y hashing
+
+Definimos la transformación que usamos para preprocesar:
+
+```{r}
+# no se calcula inmediatamente, solo se construye la expresión
+# de SQL
+pipeline_df <-  acm %>% 
+  select(id, title, authors) %>% 
+  mutate(texto = paste(title, authors, sep = "    ")) %>% 
+  mutate(id = as.character(id))
+```
+
+Y construimos un pipeline: preprocesamiento, tokenizer (en caracteres),
+calcular n-gramas de tamaño 4 (aquí los tokens son caracteres),
+vectorizador 0-1 y finalmente cálculo de minhashes:
+
+```{r}
+articulos_pipeline <- ml_pipeline(sc) %>% 
+  ft_dplyr_transformer(pipeline_df) %>% 
+  ft_regex_tokenizer(input_col = "texto", output_col = "caracteres",
+    pattern = "") %>% 
+  ft_ngram(input_col = "caracteres", output_col = "tejas", n = 4) %>% 
+  ft_count_vectorizer("tejas", 'vector_cat', binary = TRUE) %>%  
+  ft_minhash_lsh("vector_cat", "hashes", seed = 1227, 
+                 num_hash_tables = 10)
+```
+
+El pipeline se ve como sigue:
+
+```{r}
+# este paso calcula los parámetros del pipeline, en este caso 
+# el parámetro es el vocabulario de ft_count_vectorizer (que indexa
+# las tejas existentes)
+articulos_pipefit <- ml_fit(articulos_pipeline, sdf_bind_rows(acm, dbl)) 
+articulos_pipefit
+```
+
+Y ahora transformamos con el pipeline las dos tablas:
+
+```{r}
+acm_lsh <- ml_transform(articulos_pipefit, acm)
+dbl_lsh <- ml_transform(articulos_pipefit, dbl)
+acm_lsh %>% head
+```
+
+Finalmente usamos las cubetas de LSH para hacer un join aproximado por simliitud:
+
+```{r}
+# obtenemos el transformador del pipeline
+articulos_ft <- articulos_pipefit %>% ml_stage(5)
+# aplicamos el transformador a las tablas y 
+# definimos el join por similitud:
+pares_candidatos <- ml_approx_similarity_join(
+  model = articulos_ft, 
+  dataset_a = acm_lsh, 
+  dataset_b = dbl_lsh, 
+  threshold = 0.5)
+```
+
+
+```{r}
+pares_candidatos %>% tally()
+```
+
+
+
+### Evaluación
+
+Leemos los pares reales:
+
+```{r}
+mapping <- spark_read_csv(sc, 
+  path = "../../datos/similitud/entity_matching/DBLP-ACM_perfectMapping.csv", 
+  name = "perfect_mapping")
+```
+
+Crea variables apropiadas para hacer join de los verdaderos matches con tus candidatos:
+
+```{r}
+pares_candidatos <- pares_candidatos %>% rename(idDBLP = id_b, idACM = id_a)
+```
+
+Podemos calcular el número de pares verdaderos que son candidatos (recuperados), el número de pares
+candidatos que son candidatos pero no son pares verdaderos, por ejemplo:
+
+```{r}
+mapping <- mapping %>% mutate(idACM = as.character(idACM))
+ambos <- inner_join(pares_candidatos, mapping)
+num_matches <- mapping %>% tally() %>% pull(n)
+num_candidatos <- pares_candidatos %>% tally() %>% pull(n)
+num_correctos <- ambos %>% tally() %>% pull(n)
+```
+
+```{r}
+precision <- num_correctos / num_candidatos
+precision
+recall <-  num_correctos  / num_matches
+recall
+```
+
