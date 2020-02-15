@@ -62,10 +62,10 @@ Tenemos las siguientes posiblidades:
 graficar_curvas <- function(df_br, colour = TRUE){
   r <- df_br$r
   b <- df_br$b
-  curvas_similitud <- data_frame(b = b, r = r) %>%
+  curvas_similitud <- tibble(b = b, r = r) %>%
     group_by(r, b) %>%
     mutate(datos = map2(r, b, function(r, b){
-          df_out <- data_frame(s = seq(0, 1, 0.01)) %>% 
+          df_out <- tibble(s = seq(0, 1, 0.01)) %>% 
             mutate(prob = 1 - (1 - s ^ r) ^b)
           df_out 
           })) %>% unnest(cols = datos)
@@ -83,7 +83,7 @@ graficar_curvas <- function(df_br, colour = TRUE){
 
 ```{r, fig.width=4, fig.asp=0.6}
 r <- c(1,2,4,8)
-df_br <- data_frame(r = r, b = rev(r))
+df_br <- tibble(r = r, b = rev(r))
 graficar_curvas(df_br) + geom_vline(xintercept = 0.7)
 ```
 
@@ -101,7 +101,7 @@ Podemos acercarnos si incrementamos el número total de hashes.
 ```{r, fig.width=4, fig.asp=0.6}
 r <- c(4, 5, 8, 10, 20)
 b <- 80/r
-graficar_curvas(data_frame(b, r)) + geom_vline(xintercept = 0.7) 
+graficar_curvas(tibble(b, r)) + geom_vline(xintercept = 0.7) 
 ```
 
 ---
@@ -144,13 +144,13 @@ params_umbral <- function(num_hashes, umbral_inf = 0.0, umbral_sup = 1.0){
   b <- b[num_hashes %% b == 0] # solo exactos
   r <- floor(num_hashes %/% b)
   combinaciones_pr <- 
-    data_frame(b = b, r = r) %>%
+    tibble(b = b, r = r) %>%
     unique() %>%
     mutate(s = (1 - (0.5)^(1/b))^(1/r)) %>%
     filter(s < umbral_sup, s > umbral_inf)
   combinaciones_pr
 }
-combinaciones_50 <- params_umbral(50, 0.4, 0.7)
+combinaciones_50 <- params_umbral(50, 0.2, 0.8)
 graficar_curvas(combinaciones_50) + 
   geom_vline(xintercept = 0.4, lty=2) + 
    geom_vline(xintercept = 0.7, lty=2) 
@@ -256,7 +256,7 @@ de bandas, podemos seleccionar, por ejemplo:
 b <- 20
 num_hashes <- 60
 lsh_half(num_hashes, b = b)
-graficar_curvas(data_frame(b = b, r = num_hashes/b)) +
+graficar_curvas(tibble(b = b, r = num_hashes/b)) +
                  geom_vline(xintercept = 0.4) 
 ```
 
@@ -429,7 +429,7 @@ En esta parte consideramos otras posibles familias de funciones para lograr lo m
 
  1. Cuando la distancia entre dos elementos $x,y$ es baja (similitud alta),
  entonces una colisión $f(x)=f(y)$ tiene probabilidad alta.
- 2. Podemos escoger varias funciones  $f_1,\ldots,f_k$ con la propiedad anterior, de manera independiente, de forma que es posible calcular (o acotar)
+ 2. Podemos escoger al azar entre varias funciones  $f_1,\ldots,f_k$ con la propiedad anterior, de manera independiente, de forma que es posible calcular (o acotar)
  la probabilidad de $f_i(x)=f_i(y)$ .
  3. Las funciones tienen que ser relativamente fáciles de calcular (comparado con calcular todos los posibles pares y sus distancias directamente).
  
@@ -505,7 +505,7 @@ que $f(x)=f(y)$ si y sólo si $f_i(x)=f_i(y)$ para toda $i$. Esta construcción
 corresponde a lo que sucede dentro de una banda de la técnica de LSH.
 
 La nueva familia ${\cal F}'$ es $(d_1,d_2,p_1^r,p_2^r)$ sensible a la localidad. Nótese que las probabilidades siempre se hacen más chicas
-cuando incrementamos $r$, lo que hace más fácil discriminar pares
+cuando incrementamos $r$, lo que hace más fácil eliminar pares
 con similitudes en niveles bajos.
 
 
@@ -538,13 +538,13 @@ Supongamos que tenemos una familia $(0.2, 0.6, 0.8, 0.4)$ sensible
 a la localidad. Si combinamos con conjunción 4 de estas funciones,
 obtenemos una familia
 $$(0.2, 0.6, 0.41, 0.026)$$
-La proporción de falsos positivos es chica, pero la de falsos negativos
-es grande. Si tomamos 8 de estas funciones (cada una compuesta de
+La proporción de falsos positivos es chica, pero la de falsos negativos es
+grande. Si tomamos 8 de estas funciones (cada una compuesta de
 cuatro funciones de la familia original) y hacemos conjunción, obtenemos una familia
 
 $$(0.2, 0.6, 0.98, 0.19)$$
 
-En esta nueva familia, tenemos que hacer $40$ veces más trabajo para
+En esta nueva familia, tenemos que hacer $32$ veces más trabajo para
 tener esta amplificación.
 
 ---
