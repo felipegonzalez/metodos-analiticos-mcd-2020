@@ -36,6 +36,11 @@ nrow(dbl)
 tendrías que hacer? Si cada tabla contuviera unos 2 millones de documentos, ¿qué tan 
 factible sería hacer todas las posibles comparaciones?
 
+```{r}
+nrow(acm) * nrow(dbl)
+```
+
+
 ## Shingling y hashing
 
 Vamos a poner todos los documentos en una sola lista. Aunque al final
@@ -50,7 +55,11 @@ acm_1 <- acm %>% select(id, title, authors) %>%
 dbl_1 <- dbl %>% select(id, title, authors) %>% 
   mutate(texto = paste(title, authors, sep = "   ")) %>% 
   mutate(origen = "DBL")
+
 acm_dbl <- bind_rows(acm_1, dbl_1)
+# checar que agregamos 3 caracteres:
+nchar(acm_1$texto[1]) - nchar(acm_1$title[1]) - nchar(acm_1$authors[1])
+
 ```
 
 **Pregunta 2**: ¿por qué definimos el texto incluyendo algún espacio en blanco entre título y autor?
@@ -137,7 +146,7 @@ corpus[["journals/sigmod/MedeirosP94"]]$content
 ```
 
 
-**Pregunta 5**: ¿Cuántas comparaciones tuviste qué hacer (cálculos de similitud)? Compara con el total
+**Pregunta 4**: ¿Cuántas comparaciones tuviste qué hacer (cálculos de similitud)? Compara con el total
 de comparaciones que es posible hacer entre estas dos tablas.
 
 
@@ -148,40 +157,73 @@ Ahora eliminamos candidatos que aparecieron en la misma tabla (misma referencia 
 candidatos <-  candidatos %>% left_join(acm_dbl %>% select(id, origen) %>% rename(a = id, origen_a = origen))
 candidatos <-  candidatos %>% left_join(acm_dbl %>% select(id, origen) %>% rename(b = id, origen_b = origen))
 candidatos_dif <- candidatos %>% filter(origen_a != origen_b)
+nrow(candidatos_dif)
 ```
 
 
-**Pregunta 6**: 
+**Pregunta 5**: 
 ¿Cuántos pares candidatos obtuviste?
 Examina algunos elementos con similitud uno o cercana a uno. ¿Se refieren al
 mismo artículo en las dos fuentes? 
 
-**Pregunta 7**: 
+**Pregunta 6**: 
 ¿Cuántos pares candidatos obtienes si usas 30 hashes con 5 o 30 bandas, en
 lugar de 10 bandas? Explica cuál es la desventaja de usar demasiadas
 bandas, y cuál es la desventaja de usar muy pocas bandas.
 
+```{r}
+lsh_conf_30 <- lsh(corpus, bands = 30) 
+candidatos_prueba  <- lsh_candidates(lsh_conf_30)
+nrow(candidatos_prueba)
+```
+
+En este caso, asi todos los pares son pares candidatos: hay muchos falsos positivos
+
+```{r}
+lsh_conf_5 <- lsh(corpus, bands = 5) 
+candidatos_prueba <- lsh_candidates(lsh_conf_5)
+nrow(candidatos_prueba)
+```
+
+En este caso, devolvemos muy pocos pares, y puede ser que no capturemos matches verdaderos.
+
 
 ## Examinar resultados
 
-**Pregunta 8**: Ahora considera los elementos 
+**Pregunta 7**: Ahora considera los elementos 
 con similitud más baja que capturaste. Examina varios casos y concluye
 si hay pares que no se refieren al mismo artículo, y por qué.
 
+similitud 0.6, son el mismo
+
+```{r}
+tail(candidatos_dif)
+corpus[["174639"]]$content
+corpus[["journals/tods/SalemGS94"]]$content
+```
+
+Similitud 0.05 - son  diferentes
+```{r}
+corpus[["174642"]]$content
+corpus[["conf/sigmod/Chong98"]]$content
+```
 
 
-**Pregunta 9**: propón un punto de corte de similitud para la tabla de arriba, según tus
+**Pregunta 8**: propón un punto de corte de similitud para la tabla de arriba, según tus
 observaciones de la pregunta anterior.
 
 ```{r}
 # código filtrando con score > tu_numero, y examinando los elementos
 # de similitud más baja
-candidatos_filt <- filter(candidatos_dif, score > )
+candidatos_filt <- filter(candidatos_dif, score > 0.5)
 tail(candidatos_filt)
 ```
 
-**Pregunta 10**: ¿cuántos pares candidatos obtuviste al final?
+**Pregunta 9**: ¿cuántos pares candidatos obtuviste al final?
 
+```{r}
+nrow(candidatos_filt)
+```
 
 ## Evaluación de resultados
 
@@ -210,14 +252,14 @@ nrow(candidatos_filt)
 nrow(ambos)
 ```
 
-*Pregunta 11 *: Evalúa precisión y recall de tu método. Para distintas aplicaciones que te
+*Pregunta 10 *: Evalúa precisión y recall de tu método. Para distintas aplicaciones que te
 puedas imaginar, ¿qué tan buenos son estos resultados? ¿Qué consideras
 mejor en este punto, tener precisión o recall alto? 
 
 ```{r}
-precision <- 
+precision <- nrow(ambos)/nrow(candidatos_filt)
 precision
-recall <- 
+recall <- nrow(ambos)/nrow(mapping)
 recall
 ```
 
@@ -228,6 +270,24 @@ Considera algunos casos que fallamos en recuperar como candidatos
 
 ```{r}
 anti_join(mapping, candidatos_filt) %>% left_join(candidatos_filt)
+```
+
+```{r}
+a <- corpus[["375767"]]$content
+b <- corpus[["conf/sigmod/HernandezMHYHT01"]]$content
+a
+b
+```
+
+Si eliminamos todos los caracteres que no son a-z, podemos incrementar
+la similitud de estos dos documentos de un match, por ejemplo:
+
+```{r}
+jaccard_similarity(calcular_tejas(a, 4), calcular_tejas(b, 4))
+a_mod <- str_replace_all(a, "[^[A-Za-z\\s]]", "")
+b_mod <- str_replace_all(b, "[^[A-Za-z\\s]]", "")
+jaccard_similarity(calcular_tejas(a_mod, 4), calcular_tejas(b_mod, 4))
+
 ```
 
 **Pregunta 11**: Considerando estos errores, ¿qué se te ocurre para mejorar el método?
