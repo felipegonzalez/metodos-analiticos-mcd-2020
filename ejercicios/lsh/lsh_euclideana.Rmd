@@ -1,0 +1,230 @@
+---
+title: "LSH para distancia euclideana"
+output: html_notebook
+---
+
+
+### Hashes para distancia euclideana
+
+Para distancia euclideana, podemos usar los siguientes hashes, dado un ancho de cubeta $r$
+
+1. Escogemos una dirección al azar $v$ 
+2. El hash de un punto $x$ se calcula como sigue:
+  - Calculamos el tamaño de la proyección $x$ sobre $v$
+  - Dividimos este tamaño entre $r$
+  - el hash la parte entera de este último número
+  
+Es decir,
+$$h(x) = \left\lfloor{ \frac{x\cdot v}{r}}\right\rfloor$$
+
+Por ejemplo, si $v=(1,2)$, y $r = 1$:
+
+```{r, message = FALSE}
+library(tidyverse)
+norma <- function(x) sqrt(sum(x^2))
+v <- c(1,2) / norma(c(1,2))
+v
+hash_1 <- function(x) floor(sum(x * v) / 1)
+hash_1(c(5,0))
+hash_1(c(0,-1))
+hash_1(c(2,1))
+```
+
+**Pregunta 1**: Haz un dibujo mostrando $v$, $v$ dividido en cubetas de ancho 1, y 
+explica por qué los hashes de estos tres puntos dan este resultado.
+
+Las direcciones las escogemos al azar, así que nuestra función generadora de hashes
+es:
+
+```{r}
+gen_hash <- function(d, r){
+  # d es la dimensión y r es el ancho de las cubetas
+  #
+  # escogemos una dirección al azar
+  v <- rnorm(d)
+  v <- v / norma(v)
+  # devolvemos una función que calcula la cubeta:
+  function(x){
+    floor(sum(x * v) / r) %>% as.integer
+  }
+}
+set.seed(823)
+hash_1 <- gen_hash(2, 1)
+# los hashes de dos puntos:
+hash_1(c(4, 7))
+hash_1(c(-4, 7))
+# el vector que escogimos es
+environment(hash_1)$v
+```
+
+
+**Pregunta 2**: Da un argumento de porqué la cubeta es un entero que puede ser arbitrariamente
+grande o arbitrariamente negativo.
+
+**Pregunta 3**: Explica intuitivamente por qué esta familia de hashes es una familia sensible
+a la localidad (es decir, explica cómo es la probabiidad de que dos puntos cercanos caigan
+en la misma cubeta, y cómo es la probabilidad de que dos puntos lejanos caigan en la misma cubeta)
+
+
+### Miniejemplo
+
+La siguiente función genera dos clusters de puntos mezclados con puntos distribuidos
+normales con desviación estándar relativamente grande
+
+
+```{r}
+set.seed(1021)
+#puntos cercanos a (3,3,..., 3):
+simular_puntos <- function(d = 2, n = 200){
+  mat_1 <- matrix(rnorm(10 * d, sd = 0.01) + 3, ncol = d)
+  #puntos cercanos al origen:
+  mat_2 <- matrix(rnorm(10 * d, sd = 0.01) - 3, ncol = d)
+  # puntos distribuidos alrededor del origen:
+  mat_3 <- matrix(rnorm(n * d, sd = 5), ncol = d)
+  datos_tbl_vars <- rbind(mat_3, mat_1, mat_2)  %>%
+    as_tibble %>% 
+    mutate(id_1 = row_number())
+  datos_tbl_vars
+}
+# diez puntos en cluster 1, diez en cluster , y 100 sin cluster:
+datos_tbl_vars <- simular_puntos(d = 2, n = 100)
+ggplot(datos_tbl_vars, aes(x = V1, y= V2)) + 
+  geom_jitter(width = 0.1, height = 0.3, alpha = 0.3)
+```
+
+Para este ejemplo calculamos las distancias reales:
+
+```{r}
+dist_e <- function(x, y){
+  norma(x - y)
+}
+datos_tbl <- datos_tbl_vars %>%
+  pivot_longer(-id_1, names_to = "variable", values_to = "valor") %>% 
+  group_by(id_1) %>%
+  arrange(variable) %>%
+  summarise(vec_1 = list(valor))
+system.time(
+pares_tbl <- datos_tbl %>% 
+    crossing(datos_tbl %>% 
+        rename(id_2 = id_1, vec_2 = vec_1)) %>%
+    filter(id_1 < id_2) %>%
+    mutate(dist = map2_dbl(vec_1, vec_2, dist_e))
+)
+pares_tbl %>% head
+```
+
+```{r}
+nrow(pares_tbl)
+qplot(pares_tbl$dist)
+```
+
+Supongamos que queremos encontrar los puntos que están a distancia menor a 0.5
+
+```{r}
+pares_sim <- pares_tbl %>% filter(dist < 0.5)
+nrow(pares_sim)
+```
+
+Para estos datos chicos podemos visualizar los pares similares como sigue:
+
+```{r}
+ggplot(pares_sim, aes(x=id_1, y=id_2)) + geom_point()
+```
+
+**Pregunta 4**: Explica por qué en este ejemplo particular debemos encontrar un poco más de 90 pares.
+¿Cuál es el total de pares en estos datos? ¿Qué significan los patrones en la última gráfica?
+
+### Cálculo de firmas
+
+Usaremos 3 hashes con tamaño de cubeta = 0.2:
+
+```{r}
+#generar hashes
+hash_f <- map(1:3, ~ gen_hash(d = 2,  r = 0.2))
+# esta es una función de conveniencia:
+calculador_hashes <- function(hash_f){
+  function(z) {
+    map_int(hash_f, ~ .x(z))
+  }
+}
+calc_hashes <- calculador_hashes(hash_f)
+```
+
+Calculamos las firmas:
+
+```{r}
+firmas_tbl <- datos_tbl_vars %>% 
+  pivot_longer(cols = -id_1, names_to = "variable", values_to = "valor") %>% 
+  group_by(id_1) %>% 
+  summarise(vec_1 = list(valor)) %>% 
+  mutate(firma = map(vec_1, ~ calc_hashes(.x))) %>% 
+  select(id_1, firma)
+firmas_tbl
+firmas_tbl$firma[[1]]
+firmas_tbl$firma[[2]]
+```
+
+
+### Cálculo de cubetas
+
+Para este ejemplo, consideraremos todos los pares que coinciden en al menos una cubeta
+(hacemos disyunción de los 3 hashes):
+
+```{r}
+cubetas_tbl  <- firmas_tbl %>% 
+  unnest_legacy() %>% 
+  group_by(id_1) %>% 
+  mutate(hash_no = 1:3) %>% 
+  mutate(cubeta = paste(hash_no, firma, sep = "/"))
+```
+
+Ahora agrupamos cubetas y filtramos las que tienen más de un elemento
+
+```{r}
+cubetas_tbl <- cubetas_tbl %>% group_by(cubeta) %>% 
+  summarise(ids = list(id_1), n = length(id_1)) %>% 
+  filter(n > 1)
+cubetas_tbl
+```
+
+Y finalmente, extraemos los pares candidatos:
+
+```{r}
+pares_candidatos <- map(cubetas_tbl$ids, function(x){
+  combn(sort(x), 2, simplify = FALSE)}) %>% 
+  flatten %>% unique %>% 
+  transpose %>% map(as.integer) %>% as_tibble(.name_repair = "unique")
+names(pares_candidatos) <- c('id_1','id_2')
+head(pares_candidatos)
+```
+
+```{r}
+nrow(pares_candidatos)
+```
+
+Considera los pares recuperados, por ejemplo haciendo esta gráfica:
+
+```{r}
+ggplot(pares_candidatos, aes(x=id_1, y=id_2)) + geom_point()
+```
+
+**Pregunta 5**: según esta gráfica, ¿recuperaste con este método los pares que ocurren dentro de cada uno 
+de los clusters? ¿Por qué? 
+
+**Pregunta 6**: Explica por qué no necesariamente todos los pares que encontraste tienen distancia
+menor a 0.5. ¿Cómo cambiarías el número de hashes para tener menos falsos positivos?
+y/o ¿Qué harías ahora para descartar esos pares?
+
+**Pregunta 7**: Repite el ejercicio usando un ancho de cubeta de 3, y un ancho de cubeta de 0.01.
+¿Cómo cambia el número de pares candidatos? ¿Qué crees que pase con el número de falsos positivos
+y falsos negativos?
+
+**Pregunta 8**: Esta familia es $(r/2, 2r, 1/2, 1/3)$ sensible a la localidad. Si $r=0.25$
+entonces es $(0.13, 0.5, 1/2, 1/3)$. Si la distancia entre dos puntos es menor a 0.13, 
+¿cuál es la probabilidad de que al menos un hash de los tres coincida? ¿Cómo es la probabilidad
+de que al menos un hash coincida cuando la distancia es mayor a 0.5?
+
+**Pregunta 8** (opcional) Investiga cómo hacer esto usando spark
+(necesitas usar la función *ft_bucketed_random_projection_lsh*, y ve el código de minhashing
+de texto en spark)
+
