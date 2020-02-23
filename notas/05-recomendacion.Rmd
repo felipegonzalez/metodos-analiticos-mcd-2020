@@ -1,0 +1,1069 @@
+# Sistemas de recomendación y filtrado colaborativo
+
+En esta sección discutiremos métodos que se pueden utilizar
+para hacer recomendaciones de documentos, películas, artículos, etc.
+a personas según sus intereses.
+
+- **Problema**: predecir la respuesta de personas a estímulos a los que no han sido expuestos,
+basados en respuesta a otros estímulos de esta y quizá otras personas similares.
+
+Por ejemplo, si consideramos usuarios de Netflix: ¿qué tanto le puede gustar a X la película Y? Usuarios de Amazon: ¿qué tan probable es que compren Z artículo si se les ofrece?
+
+
+## Enfoques de recomendación
+
+Hay varios enfoques que podemos utilizar para atacar este problema:
+
+- **Principalmente basados en contenido**:  En función de características de los estímulos, productos o películas (por ejemplo, género, actores, país de origen, año, etc.) intentamos predecir el gusto por el estímulo. En este enfoque, construimos variables derivadas del contenido de los artículos (por ejemplo: qué actores salen, año, etc. o en textos palabras que aparecen), e intentamos predecir el gusto a partir de esas características. 
+
+Ejemplo: Si mu gustó *Twilight* entonces el sistema recomienda otros dramas+vampiros ("por ejemplo entrevista con un vampiro", por contenido).
+
+- **Principalmente colaborativos**: utilizamos gustos o intereses de usuarios/artículos similares --- en el sentido de que les han gustado los mismos artículos/les gustaron a las mismas personas.
+
+Ejemplo: Me gustó StarWars y Harry Potter, varios otros usuarios a los que también les gustaron estas dos películas también les gustó "Señor de los anillos", así que recomendamos "Señor de los Anillos". Entre estos métodos, veremos principalmente métodos basados en reducción de dimensionalidad o  **modelos de factores latentes**: encontrar factores latentes que describan usuarios y películas, y predecimos dependiendo de los niveles de factores latentes de personas y películas.
+
+
+## Datos
+
+Los datos utilizados para este tipo de sistemas son de dos
+tipos:
+
+- Ratings  *explícitos* dados por los usuarios (por ejemplo, Netflix mucho tiempo fue así: $1-5$ estrellas)
+
+- Ratings *implícitos* que se derivan de la actividad de los usuarios (por ejemplo, vio la película completa, dio click en la descripción de un producto, etc.). 
+
+
+
+### Ejemplo {-}
+
+Consideramos evaluaciones en escala de gusto: por ejemplo $1-5$ estrellas, o $1$-me disgustó mucho, $5$-me gustó mucho, etc.
+
+Podemos representar las evaluaciones como una matriz:
+
+```{r, echo=FALSE}
+mat.cons <- matrix('-', 4, 6)
+mat.cons[1,1] <- '3';mat.cons[1,2] <- '5';mat.cons[1,3] <- '5';mat.cons[1,4] <- '2'
+mat.cons[2,1] <- '3';mat.cons[2,3] <- '4';
+mat.cons[3,4] <- '5'; mat.cons[3,5] <- '4'
+mat.cons[4,1] <- '1';mat.cons[4,3] <- '2';mat.cons[4,5] <- '5';mat.cons[4,6] <- '4';
+rownames(mat.cons) <- c('a','b','c','d')
+colnames(mat.cons) <- c('SWars1','SWars4','SWars5','HPotter1','HPotter2','Twilight')
+knitr::kable(data.frame(mat.cons))
+mat.cons.o <- mat.cons
+```
+
+
+Y lo que queremos hacer es predecir los valores faltantes de esta matriz, y seleccionar para cada usuario los artículos con predicción más alta, por ejemplo
+
+```{r, echo=FALSE}
+mat.cons <- matrix(round(runif(24, 1,5),1), 4, 6)
+mat.cons[1,1] <- '3';mat.cons[1,2] <- '5';mat.cons[1,3] <- '5';mat.cons[1,4] <- '2'
+mat.cons[2,1] <- '3';mat.cons[2,3] <- '4';
+mat.cons[3,4] <- '5'; mat.cons[3,5] <- '4'
+mat.cons[4,1] <- '1';mat.cons[4,3] <- '2';mat.cons[4,5] <- '5';mat.cons[4,6] <- '4';
+rownames(mat.cons) <- c('a','b','c','d')
+colnames(mat.cons) <- c('SWars1','SWars4','SWars5','HPotter1','HPotter2','Twilight')
+knitr::kable(data.frame(mat.cons))
+```
+
+Podemos pensar en este problema como uno de **imputación de datos faltantes**. Las dificultades 
+particulares de este problema son:
+
+- Datos ralos: cada usuario sólo ha visto y calificado una proporción baja de películas, y hay películas con pocas vistas.
+- Escalabilidad: el número de películas y usuarios es generalmente grande
+
+Por estas razones, típicamente no es posible usar técnicas estadísticas de imputación de datos (como imputación estocástica basada en regresión)
+
+- Usaremos mejor métodos más simples basados en similitud entre usuarios y películas y descomposición de matrices.
+
+## Modelos de referencia y evaluación
+
+Vamos a comenzar considerando modelos muy simples. El primero que se nos puede ocurrir es uno
+de homogeneidad de gustos: para una persona $i$, nuestra predicción de su gusto por la película
+$j$ es simplemente la media de la película $j$ sobre todos los usuarios que la han visto. Este sería un buen modelo si los gustos fueran muy parecidos sobre todos los usuarios.
+
+Introducimos la siguente notación:
+
+- $x_{ij}$ es la evaluación del usuario $i$ de la película $j$. Obsérvese que muchos de estos valores no son observados (no tenemos información de varias $x_{ij}$).
+- $\hat{x}_{ij}$ es la predicción que hacemos de gusto del usuario $i$ por la película $j$
+
+
+En nuestro primer modelo simple, nuestra predicción es simplemente
+$$\hat{x}_{ij} = \hat{b}_j$$
+donde 
+$$\hat{b_j} = \frac{1}{N_j}\sum_{s} x_{sj},$$
+y este promedio es sobre los $N_j$ usuarios que vieron (y calificaron) la película $j$.
+
+¿Cómo evaluamos nuestras predicciones?
+
+### Evaluación de predicciones
+
+Usamos muestras de entrenamiento y validación. Como en el concurso de Netflix,
+utilizaremos la raíz del error cuadrático medio:
+
+$$RECM =\left ( \frac{1}{T} \sum_{(i,j) \, observada} (x_{ij}-\hat{x}_{ij})^2 \right)^{\frac{1}{2}}$$
+
+aunque también podríamos utilizar la desviación absoluta media:
+
+$$DAM =\frac{1}{T} \sum_{(i,j) \, observada} |x_{ij}-\hat{x}_{ij}|$$
+
+- Nótese que estas dos cantidades se evaluán sólo sobre los pares $(i,j)$ para los
+que tengamos una observación $x_{ij}$.
+
+**Observaciones**:
+
+- Generalmente evaluamos sobre un conjunto de validación separado del conjunto
+de entrenamiento.
+
+- Escogemos una muestra de películas, una muestra de usuarios, y ponemos
+en validación el conjunto de calificaciones de esos usuarios para esas películas. 
+
+- Para hacer un conjunto de prueba, idealmente los datos deben ser de películas
+que hayan sido observadas por los usuarios en el futuro (después del periodo de los
+datos de entrenamiento).
+
+- Nótese que no seleccionamos *todas* las evaluaciones de un usuario, ni *todas* las
+evaluaciones de una película. Con estas estrategias, veríamos qué pasa con nuestro
+modelo cuando tenemos una película que no se ha visto o un usuario nuevo.
+Lo que queremos ententer es cómo se desempeña nuestro sistema
+cuando tenemos cierta información de usuarios y de películas.
+
+
+### Ejemplo: datos de Netflix {-}
+
+
+Los datos del concurso de Netflix originalmente vienen en archivos de texto, un archivo por película.
+
+
+The movie rating files contain over $100$ million ratings from $480$ thousand
+randomly-chosen, anonymous Netflix customers over $17$ thousand movie titles.  The
+data were collected between October, $1998$ and December, $2005$ and reflect the
+distribution of all ratings received during this period.  The ratings are on a
+scale from $1$ to $5$ (integral) stars. To protect customer privacy, each customer
+id has been replaced with a randomly-assigned id.  The date of each rating and
+the title and year of release for each movie id are also provided.
+
+The file "training_set.tar" is a tar of a directory containing $17770$ files, one
+per movie.  The first line of each file contains the movie id followed by a
+colon.  Each subsequent line in the file corresponds to a rating from a customer
+and its date in the following format:
+
+CustomerID,Rating,Date
+
+- MovieIDs range from $1$ to $17770$ sequentially.
+- CustomerIDs range from $1$ to $2649429$, with gaps. There are $480189$ users.
+- Ratings are on a five star (integral) scale from $1$ to $5$.
+- Dates have the format YYYY-MM-DD.
+
+---
+
+En primer lugar haremos un análisis exploratorio de los datos para entender algunas
+de sus características, ajustamos el modelo simple de gustos homogéneos (la predicción es el
+promedio de calificaciones de cada película), y lo evaluamos.
+
+Comenzamos por cargar los datos:
+
+```{r, message = FALSE}
+library(tidyverse)
+library(sparklyr)
+theme_set(theme_minimal())
+cb_palette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+```
+
+
+```{r leertabla1}
+pelis_nombres <- read_csv('../datos/netflix/movies_title_fix.csv', col_names = FALSE, na = c("", "NA", "NULL"))
+names(pelis_nombres) <- c('peli_id','año','nombre')
+dat_netflix <- read_csv( "../datos/netflix/dat_muestra_nflix.csv", progress = FALSE) %>% 
+    select(-usuario_id_orig) %>% 
+    mutate(usuario_id = as.integer(as.factor(usuario_id)))
+head(dat_netflix)
+dat_netflix %>% tally
+```
+
+
+Y ahora calculamos las medias de cada película. 
+
+```{r}
+medias_pelis <- dat_netflix %>% group_by(peli_id) %>% 
+    summarise(media_peli = mean(calif), num_calif_peli = n()) 
+medias_pelis <- left_join(medias_pelis, pelis_nombres)
+```
+
+```{r}
+arrange(medias_pelis, desc(media_peli)) %>% 
+  top_n(200, media_peli) %>% 
+  mutate(media_peli = round(media_peli, 2)) %>%
+  DT::datatable()
+```
+
+Nótese que varias de las películas con mejor promedio tienen muy pocas evaluaciones. Podemos
+examinar más detalladamente graficando número de evaluaciones vs promedio:
+
+
+```{r}
+ggplot(medias_pelis, aes(x=num_calif_peli, y=media_peli)) + 
+  geom_point(alpha = 0.1) + xlab("Número de calificaciones") + 
+  ylab("Promedio de calificaciones") 
+```
+
+
+Y vemos que hay más variabilidad en los promedios cuando hay menos evaluaciones, como
+es de esperarse. ¿Puedes ver algún problema que tendremos que enfrentar con el modelo simple? 
+
+
+Si filtramos por número de calificaciones (al menos $500$ por ejemplo), 
+estas son las películas mejor calificadas (la mayoría conocidas y populares):
+
+```{r}
+arrange(medias_pelis, desc(media_peli)) %>% 
+  filter(num_calif_peli > 500) %>%
+  top_n(200, media_peli) %>% 
+  mutate(media_peli = round(media_peli, 2)) %>%
+  DT::datatable()
+```
+
+Ahora seleccionamos nuestra muestra de entrenamiento y de validación. Seleccionamos una
+muestra de usuarios y de películas:
+
+```{r}
+set.seed(28882)
+usuarios <- dat_netflix %>% select(usuario_id) %>% distinct
+valida_usuarios <- usuarios %>% sample_frac(0.2) 
+peliculas <-  dat_netflix %>% select(peli_id) %>% distinct
+valida_pelis <- peliculas %>% sample_frac(0.2)
+```
+
+Y separamos calificaciones de entrenamiento y validación:
+
+```{r}
+dat_valida <- dat_netflix %>% semi_join(valida_usuarios) %>% semi_join(valida_pelis) 
+dat_entrena <- dat_netflix %>% anti_join(dat_valida)
+n_valida <- dat_valida %>% tally %>% pull(n)
+n_entrena <- dat_entrena %>% tally %>% pull(n)
+sprintf("Entrenamiento: %1d, Validación: %2d, Total: %3d", n_entrena, 
+        n_valida, n_entrena + n_valida)
+```
+
+Ahora construimos predicciones con el modelo simple de arriba y evaluamos con validación:
+
+```{r, message = FALSE}
+medias_pred <- dat_entrena %>% group_by(peli_id) %>%
+  summarise(media_pred = mean(calif)) 
+media_total_e <- dat_entrena %>% ungroup %>% summarise(media = mean(calif)) %>% pull(media)
+dat_valida_pred <- dat_valida %>% left_join(medias_pred %>% collect()) 
+head(dat_valida_pred)
+```
+
+Nota que puede ser que algunas películas seleccionadas en validación no tengan evaluaciones en entrenamiento:
+```{r}
+table(is.na(dat_valida_pred$media_pred))
+dat_valida_pred <- mutate(dat_valida_pred,
+        media_pred = ifelse(is.na(media_pred), media_total_e, media_pred))
+```
+
+No sucede en este ejemplo, pero si sucediera podríamos usar el promedio general de las predicciones. Evaluamos ahora el error:
+
+```{r}
+recm <- function(calif, pred){
+  sqrt(mean((calif - pred)^2))
+}
+
+error <- dat_valida_pred %>% ungroup %>%
+  summarise(error = mean((calif - media_pred)^2))
+error
+```
+
+Este error está en las mismas unidades de las calificaciones (estrellas en este caso).
+
+---
+
+Antes de seguir con nuestra refinación del modelo, veremos algunas
+observaciones acerca del uso de escala en análisis de datos:
+
+Cuando tratamos con datos en escala encontramos un problema técnico que es el uso distinto
+de la escala por los usuarios, muchas veces **independientemente de sus gustos**
+
+Veamos los datos de Netflix para una muestra de usuarios:
+
+
+```{r}
+# muestra de usuarios
+entrena_usu <- sample(unique(dat_entrena$usuario_id), 50)
+muestra_graf <- filter(dat_entrena, usuario_id %in% entrena_usu)
+# medias generales por usuario, ee de la media
+muestra_res <- muestra_graf %>% group_by(usuario_id) %>%
+  summarise(media_calif = mean(calif), 
+            sd_calif = sd(calif)/sqrt(length(calif)))
+
+muestra_res$usuario_id <- reorder(factor(muestra_res$usuario_id), muestra_res$media_calif)
+ggplot(muestra_res, aes(x=factor(usuario_id), y = media_calif, 
+        ymin = media_calif - sd_calif, ymax = media_calif + sd_calif)) + 
+  geom_linerange() + geom_point() + xlab('Usuario ID') +
+  theme(axis.text.x=element_blank())
+```
+
+Y notamos que hay unos usuarios que tienen promedios por encima de $4.5$, mientras que otros
+califican por debajo de $3$ en promedio. Aunque esto puede deberse a las películas que han visto,
+generalmente una componente de esta variabilidad se debe a cómo usa la escala cada usuario.
+
+- En primer lugar, quizá uno podría pensar que un modelo base consiste de simplemente
+predecir el promedio de una película sobre todos los usuarios que la calificaron (sin incluir el sesgo de cada persona). Esto no funciona bien porque típicamente hay distintos patrones
+de uso de la escala de calificación, que depende más de forma de uso de escala que de la calidad de los items.
+
+Hay personas que son:
+
+- Barcos: $5$,$5$,$5$,$4$,$4$,$5$ 
+- Estrictos: $2$,$3$,$3$,$1$,$1$,$2$
+- No se compromete: $3$,$3$,$3$,$3$,$4$
+- Discrimina: $5$,$4$,$5$,$1$,$2$,$4$
+
+El estilo de uso de las escalas varía por persona.
+Puede estar asociado a aspectos culturales (países
+diferentes usan escalas de manera diferente), quizá también de personalidad,
+y a la forma de obtener las evaluaciones (cara a cara, por teléfono, internet).
+
+Lo primero que vamos a hacer para controlar esta fuente de variación es ajustar las predicciones
+dependiendo del promedio de calificaciones de cada usuario.
+
+
+### (Opcional) Efectos en análisis de heterogeneidad en uso de escala
+
+ Muchas veces se considera que tratar como numéricos a calificaciones en escala no es muy apropiado, y que el análisis no tiene por qué funcionar pues en realidad las calificaciones están en una escala ordinal. Sin embargo,
+
+- La razón principal por las que análisis de datos en escala es difícil *no es que usemos valores numéricos para los puntos de la escala*. Si esto fuera cierto, entonces por ejemplo, transformar una variable con logaritmo también sería "malo".
+
+- La razón de la dificultad es que generalmente tenemos que lidiar con la  **heterogeneidad** en uso de la escala antes de poder obtener resultados útiles de nuestro análisis.
+
+
+Supongamos que $X_1$ y $X_2$ son evaluaciones de dos películas. Por la discusión de arriba, podríamos escribir
+
+$$X_1 = N +S_1,$$
+$$X_2 = N + S_2,$$
+
+donde $S_1$ y $S_2$ representan el gusto por la película, y $N$ representa el nivel general
+de calificaciones. Consideramos que son variables aleatorias ($N$ varía con las personas, igual que $S_1$ y $S_2$).
+
+Podemos calcular
+
+$$Cov(X_1,X_2)$$
+
+para estimar el grado de correlación de *gusto por las dos películas*, como si fueran variables numéricas. Esta no es muy buena idea, pero no tanto porque se 
+trate de variables ordinales, sino porque en realidad quisiéramos calcular:
+
+$$Cov(S_1, S_2)$$
+
+que realmente representa la asociación entre el gusto por las dos películas. El problema
+es que $S_1$ y $S_2$ son variables que no observamos.
+
+¿Cómo se relacionan estas dos covarianzas?
+
+$$Cov(X_1,X_2)=Cov(N,N) + Cov(S_1,S_2) + Cov(N, S_2)+Cov(N,S_1)$$
+
+Tenemos que $Cov(N,N)=Var(N)=\sigma_N ^2$, y suponiendo que el gusto
+no está correlacionado con los niveles generales 
+de respuesta, $Cov(N_1, S_2)=0=Cov(N_2,S_1)$, de modo que
+
+$$Cov(X_1,X_2)= Cov(S_1,S_2) + \sigma_N^2.$$
+
+
+donde $\sigma_N^2$ no tiene qué ver nada con el gusto por las películas.
+
+De forma que al usar estimaciones de $Cov(X_1,X_2)$ para estimar $Cov(S_1,S_2)$ puede
+ser mala idea porque el sesgo hacia arriba puede ser alto, especialmente si la gente varía mucho
+es un sus niveles generales de calificaciones (hay muy barcos y muy estrictos).
+
+### Ejemplo {#ejemplo}
+
+Los niveles generales de $50$ personas:
+
+```{r}
+set.seed(128)
+n <- 50
+niveles <- data_frame(persona = 1:n, nivel = rnorm(n,2))
+```
+Ahora generamos los gustos (latentes) por dos artículos, que suponemos
+con correlación negativa:
+
+```{r} 
+x <- rnorm(n)
+gustos <- data.frame(persona=1:n, gusto_1 = x + rnorm(n),
+                     gusto_2 = -x + rnorm(n))
+head(gustos,3)
+cor(gustos[,2:3])
+```
+
+Estos dos items tienen gusto correlacionado negativamente:
+```{r, fig.width=5, fig.asp = 0.7}
+ggplot(gustos, aes(x=gusto_1, y=gusto_2)) + geom_point() +
+    geom_smooth()
+```   
+
+
+Pero las mediciones no están correlacionadas:
+```{r}
+medicion_1 <- niveles$nivel + gustos$gusto_1+rnorm(n,0.3)
+medicion_2 <- niveles$nivel + gustos$gusto_2+rnorm(n,0.3)
+mediciones <- data_frame(persona = 1:n, medicion_1, medicion_2)
+cor(mediciones[,2:3])
+```
+
+
+
+Así que aún cuando el gusto por $1$ y $2$  están correlacionadas negativamente, las 
+**mediciones** de gusto no están correlacionadas.
+```{r, fig.width=5, fig.asp = 0.7}
+ggplot(mediciones, aes(x=medicion_1, y=medicion_2)) +
+    geom_point() + geom_smooth()
+```
+
+**Observaciones**: Un modelado más cuidadoso de este tipo de datos requiere más trabajo. Pero para
+el trabajo usual, generalmente intentamos controlar parte de la heterogeneidad
+**centrando** las calificaciones por usuario. Es decir, a cada calificación
+de una persona le restamos la media de sus calificaciones, que es una estimación
+del nivel general $N$. Esta idea funciona si **$k$ no es muy chico**.
+
+
+Si el número de calificaciones por persona ($k$) es chico,
+entonces tenemos los siguientes problemas:
+
+- El promedio de evaluaciones es una estimación ruidosa del nivel general.
+
+- Podemos terminar con el problema opuesto: nótese que
+si $X_1,\ldots, X_k$ son mediciones de gusto distintos items, entonces
+$$Cov(X_1-\bar{X}, X_2-\bar{X})=Cov(S_1-\bar{S},S_2-\bar{S}),$$
+$$=Cov(S_1,S_2)-Cov(S_1,\bar{S})-Cov(S_2,\bar{S}) + Var(\bar{S})$$
+
+Si $k$ es chica, suponiendo que los gustos no están correlacionados,
+los términos intermedios puede tener valor negativo relativamente grande
+( es de orden $\frac{1}{k}$), 
+aún cuando el último término sea chico (de orden $\frac{1}{k^2}$)
+
+Así que ahora las correlaciones estimadas pueden tener sesgo hacia 
+abajo, especialmente si $k$ es chica.
+
+Más avanzado, enfoque bayesiano: <https://www.jstor.org/stable/2670337>
+
+## Modelo de referencia 
+
+Ahora podemos plantear el modelo base de referencia. Este modelo es útil para hacer
+benchmarking de intentos de predicción, como primera pieza para construcción de modelos
+más complejos, y también como una manera simple de producir estimaciones cuando no hay datos suficientes para hacer otro tipo de predicción.
+
+
+```{block2, type='resumen'}
+Si $x_{ij}$ es el gusto del usuario $i$ por la película $j$, entonces nuestra predicción
+es
+$$\hat{x}_{ij} = \hat{b}_j +  (\hat{a}_i-\hat{\mu} ) $$
+
+donde $a_i$ indica un nivel general de calificaciones del usuario $i$, y $b_j$ es el nivel general de gusto por la película. 
+```
+
+Usualmente ponemos:
+
+1. Media general
+$$\hat{\mu} =\frac{1}{T}\sum_{s,t} x_{st}$$
+2. Promedio de calificaciones de usuario $i$ 
+$$\hat{a}_i =\frac{1}{M_i}\sum_{t} x_{i,t} $$
+3. Promedio de calificaciones de la película $j$ 
+$$\hat{b}_j =\frac{1}{N_j}\sum_{s} x_{s,j}$$
+
+También podemos escribir, en términos de desviaciones:
+
+$$\hat{x}_{ij} = \hat{\mu}  +  \hat{c}_i +  \hat{d}_j $$
+donde:
+
+1. Media general
+$$\hat{\mu} =\frac{1}{T}\sum_{s,t} x_{st}$$
+2. Desviación de las calificaciones de usuario $i$ respecto a la media general
+$$\hat{c}_i =\frac{1}{M_i}\sum_{t} x_{it} - \hat{\mu} $$
+3. Desviación  de la película $j$ respecto a la media general
+$$\hat{d_j} =\frac{1}{N_j}\sum_{s} x_{sj}- \hat{\mu}$$
+
+
+Una vez que observamos una calificación $x_{ij}$, el residual del modelo de referencia es
+$$r_{ij} = x_{ij} - \hat{x_{ij}}$$
+
+### Ejercicio: modelo de referencia para Netflix {-}
+
+Calculamos media de películas, usuarios y total:
+
+```{r}
+medias_usuarios <- dat_entrena %>% 
+    group_by(usuario_id) %>%
+    summarise(media_usu = mean(calif), num_calif_usu = length(calif)) %>% 
+    select(usuario_id, media_usu, num_calif_usu)
+medias_peliculas <- dat_entrena %>% 
+    group_by(peli_id) %>% 
+    summarise(media_peli = mean(calif), num_calif_peli = length(calif)) %>% 
+    select(peli_id, media_peli, num_calif_peli)
+media_total_e <- mean(dat_entrena$calif)
+```
+
+Y construimos las predicciones para el conjunto de validación
+
+```{r}
+dat_valida <- dat_valida %>% 
+  left_join(medias_usuarios) %>%
+  left_join(medias_peliculas) %>%
+  mutate(media_total = media_total_e) %>%
+  mutate(pred = media_peli + (media_usu - media_total)) %>% 
+  mutate(pred = ifelse(is.na(pred), media_total, pred))
+```
+
+
+Nótese que cuando no tenemos predicción bajo este modelo para una combinación de usuario/película, usamos el 
+promedio general (por ejemplo).
+
+Finalmente evaluamos
+
+```{r}
+dat_valida %>% ungroup %>% summarise(error = recm(calif, pred))
+```
+
+**Observación**: ¿Qué tan bueno es este resultado? De 
+[wikipedia](https://en.wikipedia.org/wiki/Netflix_Prize):
+
+> Prizes were based on improvement over Netflix's own algorithm, called Cinematch, or the previous year's score if a team has made improvement beyond a certain threshold. A trivial algorithm that predicts for each movie in the quiz set its average grade from the training data produces an RMSE of $1.0540$. Cinematch uses "straightforward statistical linear models with a lot of data conditioning".
+>
+>Using only the training data, Cinematch scores an RMSE of $0.9514$ on the quiz data, roughly a 10% improvement over the trivial algorithm. Cinematch has a similar performance on the test set, $0.9525$. In order to win the grand prize of $1,000,000$, a participating team had to improve this by another $10%$, to achieve $0.8572$ on the test set. Such an improvement on the quiz set corresponds to an RMSE of $0.8563$.
+
+Aunque nótese que estrictamente hablando no podemos comparar nuestros resultados con estos números,
+en los que se usa una muestra de prueba separada de películas vistas despúes del periodo de entrenamiento.
+
+### Ejercicio: regularización del modelo simple {-}
+
+No hemos resulto el problema de películas o usarios con pocas evaluaciones. Como vimos arriba,
+hay gran variabilidad en los promedios de las películas con pocas evaluaciones, y esto produce
+error adicional en nuestras predicciones.
+
+```{r}
+medias_peliculas <- dat_netflix %>% group_by(peli_id) %>% summarise(media_peli = mean(calif), num_calif_peli = length(calif))
+media_gral <- mean(dat_netflix$calif)
+medias_p_2 <- left_join(medias_peliculas, pelis_nombres)
+arrange(medias_p_2, desc(media_peli)) %>% head
+```
+
+Una opción es encoger calificaciones a la media dependiendo del tamaño de muestra. 
+Por ejemplo:
+
+
+$$
+\hat{x_{ij}} = \hat{\mu} + \frac{n_i}{\lambda+n_i} \hat{c_i} + \frac{m_j}{\lambda+m_j}\hat{d_j} 
+$$
+Que equivale a encoger las predicciones hacia la media general cuando el número de evaluaciones
+es bajo. El grado de encogimiento depende de $\lambda$.
+
+```{r, fig.width=5, fig.asp=0.7}
+pred_encoger <- function(media, num_usuario, num_peli, media_usu, media_peli, calif, lambda){
+        coef_usu <- num_usuario / (num_usuario + lambda)
+        coef_peli <- num_peli / (num_peli + lambda)
+        pred <- media + coef_usu * (media_usu - media) + coef_peli * (media_peli - media)
+        pred <- ifelse(is.na(pred), media, pred) # en caso de que no haya califs de usuario o peli
+        pred
+    }
+
+lambdas <- c(0.01, 0.1, 1, 5, 10, 20, 100)
+
+error_valida <- map_dfr(lambdas, function(lambda){
+    preds <- as.tibble(dat_valida) %>% 
+        mutate(pred_lambda = pred_encoger(media_total, num_calif_usu, num_calif_peli, 
+                                     media_usu, media_peli, calif, lambda)) %>% 
+        select(pred_lambda, calif)
+    list(lambda = lambda, error = recm(preds$calif, preds$pred_lambda))
+})
+ggplot(error_valida, aes(x = lambda, y = error)) + geom_line() +
+    scale_x_log10() + geom_point()
+```
+
+
+No logramos una mejora considerable. Veremos más adelante cómo lidiar con este problema de una mejor manera.
+
+
+
+## Filtrado colaborativo: similitud
+
+Además de usar promedios generales por película, podemos utilizar similitud de películas/personas
+para ajustar predicciones según los gustos de artículos o películas similares. Este es el enfoque
+más simple del filtrado colaborativo.
+
+
+Comencemos entonces con la siguiente idea: Supongamos que queremos hacer una predicción
+para el usuario $i$ en la película $j$, que no ha visto. Si tenemos una
+medida de similitud entre películas, podríamos buscar películas *similares*
+a $j$ que haya visto $i$, y ajustar la predicción según la calificación de estas películas similares.
+
+
+Tomamos entonces nuestra predicción
+base, que le llamamos $x_{ij}^0$ y hacemos una nueva predicción:
+
+$$\hat{x}_{ij} = x_{ij}^0 + \frac{1}{k}\sum_{t \in N(i,j)} (x_{it} - x_{it}^0 )$$
+
+donde $N(i,j)$ son películas similares a $j$ **que haya visto** $i$. Ajustamos $x_{ij}^0$ por el gusto promedio de películas similares a $j$, 
+a partir de las predicciones base. Esto quiere decir
+que si las películas similares a $j$ están evaluadas **por encima del esperado** para el usuario
+$i$, entonces subimos la predicción, y bajamos la predicción cuando las películas similares
+están evaluadas **por debajo de lo esperado**.
+
+Nótese que estamos ajustando por los residuales del modelo base. Podemos también utilizar
+un ponderado por gusto según similitud: si la similitud entre las películas $j$ y $t$ es $s_{jt}$,
+entonces podemos usar
+
+\begin{equation}
+\hat{x}_{ij} = x_{ij}^0 + \frac{\sum_{t \in N(i,j)} s_{jt}(x_{it} - x_{it}^0 )}{\sum_{t \in N(i,j)} s_{jt}} 
+(#eq:simprom)
+\end{equation}
+
+Cuando no tenemos películas similares que hayan sido calificadas por nuestro usuario,
+**entonces usamos simplemente la predicción base**.
+
+
+### Cálculo de similitud entre usuarios/películas {#simitems}
+
+Proponemos utilizar la distancia coseno de las calificaciones centradas 
+por usuario. Como discutimos arriba, antes de calcular similitud conviene centrar las calificaciones por usuario
+para eliminar parte de la heterogeneidad en el uso de la escala.
+
+
+### Ejemplo {-}
+
+```{r, echo = FALSE}
+mat.cons <- matrix(NA, 5, 6)
+mat.cons[1,1] <- 5;mat.cons[1,2] <- 5;mat.cons[1,3] <- 5;mat.cons[1,4] <- 2
+mat.cons[2,1] <- 3;mat.cons[2,3] <- 4;
+mat.cons[3,4] <- 5; mat.cons[3,5] <- 4
+mat.cons[4,1] <- 1;mat.cons[4,3] <- 2;mat.cons[4,5] <- 5;mat.cons[4,6] <- 4;
+mat.cons[5,1] <- 4; mat.cons[5,2] <- 5; mat.cons[5,6] <- 2
+rownames(mat.cons) <- c('a','b','c','d','e')
+colnames(mat.cons) <- c('SWars1','SWars4','SWars5','HPotter1','HPotter2','Twilight')
+knitr::kable(mat.cons)
+```
+
+Calculamos medias por usuarios y centramos:
+
+```{r}
+apply(mat.cons,1, mean, na.rm=TRUE)
+mat.c <- mat.cons - apply(mat.cons,1, mean, na.rm=TRUE)
+knitr::kable(mat.c, digits = 2)
+```
+
+Y calculamos similitud coseno entre películas,  **suponiendo que las películas
+no evaluadas tienen calificación $0$**:
+
+```{r}
+sim_cos <- function(x,y){
+  sum(x*y, na.rm = T)/(sqrt(sum(x^2, na.rm = T))*sqrt(sum(y^2, na.rm = T)))
+}
+mat.c[,1]
+mat.c[,2]
+sim_cos(mat.c[,1], mat.c[,2])
+
+```
+
+```{r}
+sim_cos(mat.c[,1], mat.c[,6])
+```
+
+
+**Observación**:
+
+- Hacer este supuesto de valores $0$ cuando no tenemos evaluación no es lo mejor, pero 
+como centramos por usuario tiene más sentido hacerlo. Si utilizaramos las calificaciones
+no centradas, entonces estaríamos suponiendo que las no evaluadas están calificadas muy mal ($0$, por abajo de $1$,$2$,$3$,$4$,$5$).
+
+- Si calculamos similitud entre *usuarios* de esta forma, las distancia coseno es simplemente el coeficiente de correlación. Nótese que estamos calculando similitud entre *items*, centrando por usuario, y esto no
+es lo mismo que correlación entre columnas.
+
+
+### Ejemplo: ¿cómo se ven las calificaciones de películas similares/no similares? {-}
+
+Centramos las calificaciones por usuario y seleccionamos tres películas que
+pueden ser interesantes.
+
+```{r}
+dat_entrena_c <- dat_entrena %>%
+  group_by(usuario_id) %>%
+  mutate(calif_c = calif - mean(calif))
+
+## calculamos un id secuencial.
+dat_entrena_c$id_seq <- as.numeric(factor(dat_entrena_c$usuario_id))
+
+filter(pelis_nombres, str_detect(nombre,'Gremlins'))
+filter(pelis_nombres, str_detect(nombre,'Harry Met'))
+dat_1 <- filter(dat_entrena_c, peli_id==2897) # Gremlins 2
+dat_2 <- filter(dat_entrena_c, peli_id==6482) # Gremlins 1
+dat_3 <- filter(dat_entrena_c, peli_id==2660) # WHMS
+```
+
+Juntamos usuarios que calificaron cada par:
+
+```{r}
+comunes <- inner_join(dat_1[, c('usuario_id','calif_c')], dat_2[, c('usuario_id','calif_c')] %>% rename(calif_c_2=calif_c))
+
+comunes_2 <- inner_join(dat_1[, c('usuario_id','calif_c')], dat_3[, c('usuario_id','calif_c')] %>% rename(calif_c_2=calif_c))
+```
+
+Y ahora graficamos. ¿Por qué se ven bandas en estas gráficas?
+
+```{r, fig.width = 5, fig.asp = 0.7, message=FALSE, warning = FALSE}
+ggplot(comunes, aes(x=calif_c, y=calif_c_2)) + 
+  geom_jitter(width = 0.2, height = 0.2, alpha = 0.5) + 
+  geom_smooth() + xlab('Gremlins 2') + ylab('Gremlins 1')
+ggplot(comunes_2, aes(x=calif_c, y=calif_c_2))  + 
+  geom_jitter(width = 0.2, height = 0.2, alpha = 0.5) + 
+  geom_smooth() + xlab('Gremlins 2') + ylab('When Harry met Sally')
+```
+
+**Pregunta**: ¿por qué los datos se ven en bandas?
+
+Y calculamos la similitud coseno:
+
+```{r}
+sim_cos(comunes$calif_c, comunes$calif_c_2)
+sim_cos(comunes_2$calif_c, comunes_2$calif_c_2)
+```
+
+Así que las dos Gremlins son algo similares, pero Gremlins $1$ y Harry Met Sally no son similares.
+
+---
+
+
+Podemos ahora seleccionar algunas películas y ver cuáles son películas similares que nos podrían ayudar a hacer recomendaciones:
+
+```{r}
+dat_entrena_2 <- dat_entrena_c %>% 
+  ungroup() %>% 
+  select(peli_id, id_seq, calif_c)
+
+ejemplos <- function(pelicula){
+  mi_peli <- filter(dat_entrena_2, peli_id==pelicula) %>% 
+             rename(peli_id_1 = peli_id, calif_c_1 = calif_c)
+  # vamos a calcular todas las similitudes con mi_peli - esto no es buena
+  # idea y discutiremos más adelante cómo evitarlo
+  datos_comp <- left_join(dat_entrena_2, mi_peli)
+  # calcular similitudes
+  out_sum <- datos_comp %>% 
+      group_by(peli_id) %>%
+      summarise(dist = sim_cos(calif_c, calif_c_1)) %>% 
+      left_join(medias_p_2)
+  out_sum %>% arrange(desc(dist))  %>% select(nombre, dist, num_calif_peli)
+}
+
+```
+
+Nótese que las similitudes aparentan ser ruidosas si no filtramos por número de evaluaciones:
+
+```{r}
+ejemplos(8199) %>% head(20) %>% knitr::kable()
+ejemplos(8199) %>% filter(num_calif_peli > 200) %>% head(20) %>% knitr::kable()
+```
+
+```{r}
+ejemplos(6807) %>% head(20) %>% knitr::kable()
+ejemplos(6807) %>% filter(num_calif_peli > 300) %>% head(20) %>% knitr::kable()
+```
+
+El problema otra vez es similitudes ruidosas que provienen de pocas evaluaciones en común. 
+
+### Ejercicio {-}
+Intenta con otras películas que te interesen
+
+```{r}
+ejemplos(11271) %>% filter(num_calif_peli>300) %>% head(20)
+ejemplos(11929) %>% filter(num_calif_peli>300) %>% head(20)
+ejemplos(2660) %>% filter(num_calif_peli>300) %>% head(20)
+```
+
+### Implementación 
+
+Si queremos implementar este tipo de filtrado colaborativo (por
+similitud), el ejemplo de arriba no es práctico pues tenemos que
+calcular todas las posibles similitudes. Sin embargo, como nos interesa
+principalmente encontrar los pares de similitud alta, podemos usar LSH:
+
+- Empezamos haciendo LSH de las películas usando el método de hiperplanos
+aleatorios como función hash (pues este es el método que captura distancias coseno bajas). 
+Nuestro resultado son todos los items
+o películas agrupadas en cubetas. Podemos procesar las cubetas para
+eliminar falsos positivos (o items con muy pocas evaluaciones).
+- Ahora queremos estimar el rating del usuario $i$ de una película $j$
+que no ha visto. Extraemos las cubetas donde cae la película $j$, y 
+extraemos todos los items.
+- Entre todos estos items, extraemos los que ha visto el usuario $i$,
+y aplicamos el promedio \@ref(eq:simprom).
+
+**Observaciones**
+
+- En principio, este análisis podría hacerse usando similitud entre
+usuarios en lugar de items. En la práctica (ver [@mmd]), el enfoque
+de similitud entre items es superior, pues similitud es un concepto
+que tiene más sentido en items que en usuarios (los usuarios pueden
+tener varios intereses traslapados).
+- Nótese que en ningún momento tuvimos que extraer variables de
+películas, imágenes, libros, etc o lo que sea que estamos recomendando.
+Esta es una fortaleza del filtrado colaborativo.
+- Por otro lado, cuando tenemos pocas evaluaciones o calificaciones
+este método no funciona bien (por ejemplo, no podemos calcular
+las similitudes pues no hay traslape a lo largo de usuarios). En
+este caso, este método puede combinarse con otros (por ejemplo, agregar
+una parte basado en modelos de gusto por género, año, etc.)
+
+
+## Dimensiones latentes para recomendación
+
+En las similitudes que vimos arriba, es razonable pensar que hay ciertos "conceptos" 
+que agrupan o separan películas, y así mismo, que los usuarios se distinguen por el gusto o no
+que tienen por estos "conceptos".
+
+En esta parte, consideramos la idea de utilizar reducción de dimensionalidad para
+hacer recomendaciones. Esta idea propone que hay ciertos factores latentes (no observados)
+que describen películas con "contenido implícito similar", y usuarios según su interés en esa dimensión.
+
+Este método nos permitirá también controlar mejor los resultados ruidosos que
+obtuvimos en los ejemplos anteriores (usando regularización y reducción
+de dimensión).
+
+
+
+### Ejemplo: una dimensión latente{#ejemplo}
+Por ejemplo: consideramos una dimensión de películas serias contra películas divertidas.
+$3$ películas podrían describirse con
+
+$$v=(-2,0,1)$$,
+
+lo que interpretamos como la película $1$ es divertida (negativa en seriedad-diversión), la película $2$ está en promedio, y la película $3$ es más seria que las dos anteriores.
+ 
+Por otro lado, tenemos descriptores de 5 usuarios:
+
+$$u=(2,3,-3,0,1)$$
+que dice que a los primeros dos usuarios les gustan las películas serias, al tercero le gustan las divertidas, y los dos últimos no tienen preferencia clara a lo largo de esta dimensión.
+
+Qusiéramos predecir el gusto usando estos dos vectores. Nuestras predicciones (considerando que $u$ y $v$ son matrices de una columna) serían simplemente
+
+$$\widetilde{X} = u v^t$$
+
+```{r}
+u <- c(2,3,-3,0,1)
+v <- c(-2,0,1)
+gustos <- u%*%t(v)
+gustos
+```
+
+
+Así que al usuario $1$ le recomndamos la película $3$, pero al usuario $3$ le recomendamos la película $1$.
+
+---
+
+La idea es entonces encontrar pesos para películas $u$ y para usuarios $v$ de forma que
+$X\approx \widetilde{X} = uv^t$: podemos reproducir las calificaciones observadas a partir de nuestro modelo de factores latentes.
+
+Nótese sin embargo que hay varias dimensiones que pueden describir a películas y usuarios:
+por ejemplo, seria-divertida, artística-hollywood, ciencia ficción, con/sin violencia, etc. 
+Podemos proponer más dimensiones latentes de la siguiente forma:
+
+
+### Ejemplo: dos dimensiones latentes {#ejemplo}
+Tenemos la dimensión anterior de seria-divertida
+```{r}
+v_1 <- c(-2,0,1)
+u_1 <- c(2,3,-3,0,1)
+```
+Y supongamos que tenemos otra dimensión con violencia - sin violencia
+```{r}
+v_2 <- c(-3,2,2)
+u_2 <- c(-3,-3,0,-2,4)
+```
+
+
+Que quiere decir que las películas $2, 3$ tienen volencia, pero la película $1$ no. Por otra parte, a los usuarios $1,2$ y $5$ no les gustan las películas con violencia, mientras que al usuario $5$ si les gustan.
+
+La idea ahora es que el gusto de una persona por una película se escribe como combinación de las dos dimensiones. Por ejemplo, para la persona $1$ tenemos, y la película $1$, empezamos haciendo
+
+```{r}
+u_1[1]*v_1[1]
+u_2[1]*v_2[1]
+```
+
+lo que quiere decir que el hecho de que la película $1$ no sea seria le resta $4$ en gusto (pues la película $1$ está del lado "divertido"), pero le suma $9$ en gusto, pues es una película sin violencia y esta persona está del lado "sin violencia".
+
+Sumamos para encontrar el gusto total
+
+```{r}
+u_1[1]*v_1[1] + u_2[1]*v_2[1]
+```
+
+Para calcular los gustos sobre todas las personas y películas, haríamos
+
+```{r}
+U <- cbind(u_1, u_2)
+V <- cbind(v_1, v_2)
+U
+V
+U %*% t(V)
+```
+
+- El renglón $j$ de $U$ son los valores en las dimensiones latentes para
+la película $i$ (descriptores de usuarios).
+- El renglón $j$ de $V$ son los valores en las dimensiones latentes para
+el usuario $j$ (descriptores de películas)
+
+
+```{block2, type ="resumen"}
+Con $k$ dimensiones latentes, el modelo que proponemos es:
+
+$$\widetilde{X} = UV^t$$
+
+donde $U$ es una matrix de $n\times k$ ($n=$ número de usuarios), y $V$ es una matriz
+de $p \times k$, donde $p$ es el número de películas.
+
+Buscamos que, si $X$ son las verdaderas calificaciones, entonces
+$$X\approx \widetilde{X}.$$
+
+y nótese que esta aproximación es en el sentido de las entradas de $X$ que **son observadas**. Sin embargo, $\widetilde{X}$ nos da predicciones para **todos los pares película-persona**.
+```
+
+
+Bajo este modelo, la predicción para el usuario $i$ y la película $j$
+es la siguiente suma sobre las dimensiones latentes:
+
+$$\widetilde{x}_{ij} =\sum_k u_{ik} v_{jk}$$
+
+que expresa el hecho de que el gusto de $i$ por $j$ depende de una combinación (suma)
+de factores latentes de películas ponderados por gusto por esos factores del usuario.
+
+
+El número de factores latentes $k$ debe ser seleccionado (por ejemplo, según el error de validación). Dado $k$, para encontrar $U$ y $V$ (un total de $k(n+p)$ parámetros) buscamos
+minimizar 
+
+$$\sum_{(i,j)\, obs} (x_{ij}-\widetilde{x}_{ij})^2,$$
+
+
+que también podemos escribir este problema (recuérdese que $u_i$ y
+$v_j$ aquí son vectores renglón) como
+
+$$\min_{U,V}\sum_{(i,j)\, obs} (x_{ij}-u_iv_j^t)^2$$
+donde $u_i$ es el renglón $i$-esimo de $U$ (gustos latentes del usuario $i$ en cada dimensión), y $v_j$ es el renglón $j$-ésimo de la matriz $V$ (calificación latente de la película en cada dimensión)
+
+
+```{block2, type='resumen'}
+**¿Por qué funciona la idea de factores latentes?**
+
+- El método de factorización de matrices de grado bajo ($k$)
+funciona compartiendo información a lo largo de películas y usuarios. Como tenemos
+que ajustar los datos observados, y solo tenemos a nuestra disposición $k$
+  descriptores para cada película y usuario, una minimización exitosa
+captura regularidades en los datos.
+
+- Es importante que la representación sea de grado relativamente bajo,
+pues esta "compresión" es la que permite que las dimensiones 
+latentes capturen regularidades que están en los datos observados (que
+esperamos encontrar en el proceso de ajuste). 
+```
+
+
+Por ejemplo, supongamos que el gusto por las películas sólo depende de
+una dimensión sería - divertida. Si ajustamos un modelo de un solo
+factor latente, un **mínimo** se alcanzaría separando con la dimensión latente
+las películas serias de las divertidas, y los usuarios que prefieren películas
+serias o divertidas. Esta sería una buena explicación de los datos observados,
+y las predicciones para películas no vistas sería buena usando simplemente
+el valor en seriedad de la película (extraída de otras personas con gustos
+divertido o serio) y el gusto por seriedad de esa persona (extraida de la 
+observación de que le gustan otras películas serias u otras divertidas).
+
+### Combinación con modelo base
+
+Podemos usar también ideas de nuestro modelo base y modelar desviaciones en lugar de calificaciones directamente:
+
+Si $X^0$ son las predicciones del modelo de referencia, y
+$$R = X-X^0$$
+son los residuales del modelo base, buscamos mejor
+$$R\approx \widetilde{X} = UV^t$$
+de manera que las predicciones finales son
+$$X^0 + \widetilde{X}$$
+
+Veremos también más adelante cómo regularizar estos sesgos como
+parte de la construcción del modelo.
+
+## Factorización de matrices
+
+Como vimos arriba, reexpresamos nuestro problema como un problema
+de factorización de matrices  (encontrar $U$ y $V$). Hay varias alternativas populares para atacarlo:
+
+- Descomposición en valores singulares (SVD).
+- Mínimos cuadrados alternados.
+- Descenso en gradiente estocástico.
+
+Para entender más del primer enfoque, puedes consultar por ejemplo
+las notas del curso de aprendizaje de máquina <https://github.com/felipegonzalez/aprendizaje-maquina-mcd/blob/master/14-reducir-dimensionalidad.Rmd>. No vamos a ver más de este enfoque, pues no
+es del todo apropiado: nuestras matrices tienen muchos datos faltantes, y SVD naturalmente no está diseñado para lidiar con este problema. Se pueden hacer ciertas imputaciones (por ejemplo, insertar 0's una vez que centramos por usuario), pero los siguientes dos métodos están mejor adaptados para
+nuestro problema.
+
+## Mínimos cuadrados alternados
+
+Supongamos entonces que queremos encontrar matrices $U$ y $V$, donde $U$ es una matrix de $n \times k$ ($n=$ número de usuarios), y $V$ es una matriz
+de $p \times k$, donde $p$ es el número de películas que nos de una
+aproximación de la matrix $X$ de calificaciones
+$$
+X \approx UV^t
+$$
+Ahora supongamos que conocemos $V_1$. Si este es el caso, entonces queremos
+resolver para $U_1$:
+$$ \min_{U_1}|| X - U_1V_1^t||_{obs}^2$$
+Como $V_1^t$ están fijas, este es un problema de mínimos cuadrados usual, y puede resolverse analíticamente (o usar descenso en gradiente, que
+es simple de calcular de forma analítica) para encontrar $U_1$. Una vez que encontramos $U_1$, la fijamos, e intentamos ahora resolver para $V$:
+
+$$ \min_{V_2}|| X - U_1V_2^t||_{obs}^2$$
+Y una vez que encontramos $V_2$ resolvemos
+
+$$ \min_{U_2}|| X - U_2V_2^t||_{obs}^2$$
+
+Continuamos este proceso hasta encontrar un mínimo local o hasta cierto número de iteraciones. Para inicializar $V_1$, en [@alsreg] se recomienda tomar como primer
+renglón el promedio de las calificaciones de las películas, y el resto 
+números aleatorios chicos (por ejemplo $U(0,1)$). También pueden inicializarse con números
+aleatorios chicos las dos matrices.
+
+### Mínimos cuadrados alternados con regularización
+
+Para agregar regularización y lidiar con los datos ralos, podemos
+incluir un coeficiente adicional. Minimizamos entonces (como en
+ [@alsreg]):
+
+$$\min_{U,V}\sum_{(i,j)\, obs} (x_{ij}-u_i^tv_j)^2 + 
+\lambda \left ( \sum_i n_{i}||u_i||^2 + \sum_j m_{j} ||v_j||^2 \right)$$
+
+y modificamos de manera correspondiente cada paso de mínimos cuadrados
+mostrado arriba. $n_{i}$ es el número de evaluaciones del usuario $i$, y
+$m_j$ es el número de evaluaciones de la película $j$.
+
+**Observaciones**:
+
+- Nótese que penalizamos el tamaños de los vectores $u_i$ y $v_j$ para evitar sobreajuste (como en regresión ridge).
+- Nótese también que los pesos $n_i$ y $m_j$ en esta regularización hace comparables el término que aparece en la suma de los residuales al cuadrado
+(la primera suma),
+y el término de regularización: por ejemplo, si el usuario $i$ hizo
+$n_i$ evaluaciones, entonces habrá $n_i$ términos en la suma de la izquierda. Lo mismo podemos decir acerca de las películas.
+- Este no es el único término de regularización posible. Por ejemplo, podríamos *no* usar los pesos $n_i$ y $m_j$, y obtendríamos
+un esquema razonable también, donde hay más regularización relativa
+para usuarios/películas que tengan pocas evaluaciones.
+
+Este método está implementado en [spark](https://spark.apache.org/docs/2.1.0/mllib-collaborative-filtering.html). La implementación está basada parcialmente en [@alsreg]. La inicialización
+es diferente en spark, ver [el código](https://github.com/apache/spark/blob/v2.2.0/mllib/src/main/scala/org/apache/spark/ml/recommendation/ALS.scala), donde cada renglón se inicializa con
+un vector de $N(0,1)$ normalizado.
+
+En este caso, copiamos nuestra tabla a spark (nota: esto es algo que normalmente no haríamos, los datos habrían sido cargados en el cluster
+de spark de otra forma):
+
+```{r,  message=FALSE, warning=FALSE}
+rm(list = c('dat_netflix', 'dat_entrena_2','dat_entrena_c'))
+library(sparklyr)
+# configuración para spark
+config <- spark_config()
+config$`sparklyr.shell.driver-memory` <- "4G"
+```
+
+```{r}
+# conectar con "cluster" local
+sc <- spark_connect(master = "local", config = config)
+spark_set_checkpoint_dir(sc, './checkpoint')
+```
