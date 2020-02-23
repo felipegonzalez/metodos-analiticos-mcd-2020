@@ -1,0 +1,303 @@
+---
+title: "Introducción a sparklyr"
+output: html_notebook
+---
+
+En esta parte veremos algunos aspectos básicos de Spark, que nos servirá para
+escalar nuestro análisis (tanto a máquinas con muchos cores y memoria como a clusters para
+los problemas más grande). En primer lugar, notamos que cuando es posible,
+es más simple y rápidos usar máquinas más grandes y trabajar con las herramientas
+más flexibles que conmunmente utilizamos (pandas y dplyr), ver por ejemplo [aquí](https://h2oai.github.io/db-benchmark/).
+
+
+## Conectarse a un cluster
+
+Nos conectamos a una instancia local de Spark:
+
+```{r, message = FALSE}
+library(tidyverse)
+library(sparklyr)
+config <- spark_config()
+# configuración para modo local, ajustar la memoria del driver solamente
+config$`sparklyr.shell.driver-memory` <- "2G"
+# esta línea es necesaria para que la ui funcione en el contenedor:
+config$`spark.env.SPARK_LOCAL_IP.local` <- "0.0.0.0"
+#config$`sparklyr.log.console` <- TRUE
+sc <- spark_connect(master = "local", config = config)
+sc$conf
+```
+
+## Cargar datos a Spark
+
+Normalmente los datos están en algún lugar, quizá en un sistema
+distribuido de archivos como HDFS. En nuestro caso están en nuestro
+sistema de archivos local:
+
+```{bash}
+wc -l ../../datos/profiles.csv
+head -5 ../../datos/profiles.csv
+```
+
+Podemos cargar a Spark (sin pasar por R) como sigue:
+
+```{r}
+perfiles_tbl <- spark_read_csv(sc, 
+  path = "../../datos/profiles.csv",
+  name = "perfiles",
+  escape = "\"", 
+  options = list(multiline = TRUE),
+  memory = FALSE, repartition = 10)
+```
+
+## Básicos de manipulación y análisis
+
+Usamos dplyr y sparklyr para empujar código a spark, donde se ejecutan los queries y las transformaciones. Usamos el mismo código que usaríamos en dplyr aplicado a una *tibble*
+de *dplyr*:
+
+```{r}
+conteo_pets <- perfiles_tbl %>%
+  mutate(pets = ifelse(is.null(pets), "No disponible", pets)) %>% 
+  group_by(pets) %>%
+  summarise(n = n(), edad_media = mean(age), sd_edad = sd(age)) %>% 
+  mutate(prop = n / sum(n)) %>% arrange(desc(prop))
+conteo_pets
+```
+
+Esto funciona aunque las tablas no están en la sesión de R, sino en Spark
+
+```{r}
+class(perfiles_tbl)
+class(conteo_pets)
+```
+
+```{r}
+glimpse(perfiles_tbl)
+```
+
+
+Nótese: que este código no se ejecuta en la sesión de R, sino que dplyr envía código traducido
+en sparksql a sql, y ahí se ejecuta. Puede usarse group_by, select, mutate, filter. 
+Las funciones que dplyr puede traducir a Spark SQL [son](https://spark.rstudio.com/dplyr/): 
+
+- Basic math operators +, -, *, /, %%, ^, 
+- Math functions abs, acos, asin, asinh, atan, atan2, ceiling, cos, cosh, exp, floor, log, log10, round, sign, sin, sinh, sqrt, tan, tanh,
+- Logical comparisons <, <=, !=, >=, >, ==, %in%, 
+- Boolean operations &, &&, |, ||, !, 
+- Character functions paste, tolower, toupper, nchar
+- Casting: as.double, as.integer, as.logical, as.character, as.date
+- Basic aggregations: mean, sum, min, max, sd, var, cor, cov, n
+ functions
+ 
+Se pueden hacer también joins (left_join, anti_join, etc), muestrar con 
+sample_n y sample_frac, usar la función ifelse, y otras.
+
+Cuando dplyr no reconoce una función, se pasa al sql directamente, y así se pueden usar
+[funciones de Hive](https://cwiki.apache.org/confluence/display/Hive/LanguageManual+UDF#LanguageManualUDF-HiveOperatorsandUser-DefinedFunctions(UDFs)), por ejemplo
+
+
+```{r}
+fechas <- perfiles_tbl %>%
+  select(last_online) %>% 
+  mutate(fecha = substr(last_online, 0, 9),
+         hora = substr(last_online, 9, 20)) %>%
+  mutate(hora = regexp_replace(hora, "-", ":")) %>%
+  mutate(timestamp = concat_ws(" ", fecha, hora)) %>% 
+  mutate(dia = dayofmonth(timestamp))
+fechas
+fechas %>% dbplyr::sql_render()
+```
+
+
+-  concat_ws, regexp_replace y dayofmonth son funciones de Hive (ver [documentación de Hive](https://cwiki.apache.org/confluence/display/Hive/LanguageManual+UDF#LanguageManualUDF-HiveOperatorsandUser-DefinedFunctions(UDFs))).
+- Estas funciones no son funciones de R
+
+Nótese que creamos particiones en los datos para que nos permita
+aprovechar paralelismo (sobre los renglones de los datos)
+
+### Copiando datos resumidos a R
+
+Podemos traer datos a R (por ejemplo para usar ggplot, etc.) usando *collect*:
+
+```{r}
+resultado <- conteo_pets %>% collect()
+resultado
+glimpse(resultado)
+```
+
+**Nota**: es mala idea hacer collect de tablas grandes. Los datos se copian en memoria, y 
+no es un proceso rápido pues hay que traducir de spark a R. Lo mismo aplica a copiar de R a Spark.
+
+### Evaluación floja
+
+En Spark y dplyr se utiliza evaluación perezosa, es decir, se hacen cálculos solo
+hasta que se requieren los valores. Esto permite a Spark planear para optimizar el cálculo.
+Esto quiere decir que a veces corremos alguna parte de nuestro código que consiste en tranformaciones
+y no hay ninguna acción, el código parece correr muy rápido. En el momento que hacemos una
+acción (como tally o collect), entonces el cálculo se dispara.
+
+Por ejemplo:
+
+
+```{r}
+system.time(
+  temp <- spark_read_text(sc,
+      path = "../../datos/similitud/article_categories_en.ttl",
+      memory = FALSE) %>% 
+    mutate(url = regexp_extract(line, "(?<=/)([^/\\s]+)(?=>)"))
+)
+```
+
+Tarda muy poco porque spark todavía no ha ejecutado código de transformación
+ni ha traido los datos a memoria.
+
+## Funciones que transforman un DataFrame de Spark
+
+Tenemos otras funciones que sirven para operar directamente en tablas de Spark
+sin pasar por dplyr. Muchas de estas empiezan con *sdf_"*, por ejemplo:
+
+```{r}
+sdf_schema(perfiles_tbl)
+sdf_describe(perfiles_tbl)
+```
+
+```{r}
+perfiles_part <- sdf_random_split(perfiles_tbl, entrena = 0.9, prueba = 0.1)
+perfiles_part$prueba %>% tally()
+perfiles_part$entrena %>% tally()
+```
+
+Para crear dataframes en spark directamente
+
+```{r}
+ejemplo <- sdf_along(sc, along = 1:10)
+glimpse(ejemplo)
+sdf_register(ejemplo, "ejemplo")
+```
+
+- sdf_broadcast, sdf_checkpoint, sdf_bind_rows, sdf_bind_cols, sdf_repartition
+etc. son otras funciones útiles
+
+## Transformadores y Estimadores
+
+El paquete Spark ML de Spark provee los siguientes conceptos útiles para trabajar con 
+modelos y predicciones a partir de DataFrames de Spark.
+
+- Transformadores: toman un DataFrame y producen otro (por ejemplo, agregar una columna de predicciones)
+- Estimadores: se ajustan con un DataFrame y resultan en un Transformador
+- Parámetros: estimadores y transformadores tiene parámetros que se pueden ajustar con un DataFrame o directamente
+- Pipeline: cadena de estimadores y transformadores. Es un estimador, y cuando se ajusta produce un transformador.
+
+- Los transformadores definidos en Spark comienzan con "*ft_*, puedes ver por ejemplo [aqui](https://spark.apache.org/docs/2.4.0/ml-features.html). Todos los transformadores y estimadores de spark pueden accederse desde sparklyr.
+- Los estimadores usuales de Spark comienzan con *ml_*, como 
+ml_linear_regression, ml_gradient_boosted_trees, ml_bisecting_kmeans, etc.
+
+Por ejemplo:
+
+```{r}
+# ver https://therinspark.com/modeling.html
+# definir algunas transformaciones:
+trans_df <- perfiles_tbl %>% 
+  mutate(
+    height = as.numeric(height),
+    income = ifelse(income == "-1", NA, as.numeric(income))
+  ) %>%
+  mutate(sex = ifelse(is.na(sex), "missing", sex)) %>%
+  mutate(drinks = ifelse(is.na(drinks), "missing", drinks)) %>%
+  mutate(drugs = ifelse(is.na(drugs), "missing", drugs)) %>%
+  mutate(job = ifelse(is.na(job), "missing", job)) %>% 
+  mutate(not_working = ifelse(job %in% c("student", "unemployed", "retired"), 1 , 0))
+
+
+# Un pipeline que comienza con dplyr
+pipeline_perfiles <- ml_pipeline(sc) %>%
+  ft_dplyr_transformer(trans_df) %>% 
+  ft_string_indexer(input_col = "sex", output_col = "sex_indexed") %>%
+  ft_string_indexer(input_col = "drinks", output_col = "drinks_indexed") %>%
+  ft_string_indexer(input_col = "drugs", output_col = "drugs_indexed") %>%
+  ft_one_hot_encoder_estimator(
+    input_cols = c("sex_indexed", "drinks_indexed", "drugs_indexed"),
+    output_cols = c("sex_encoded", "drinks_encoded", "drugs_encoded")
+  ) %>%
+  ft_vector_assembler(
+    input_cols = c("age", "sex_encoded", "drinks_encoded", 
+                   "drugs_encoded"), 
+    output_col = "features"
+  ) %>%
+  ft_standard_scaler(input_col = "features", output_col = "features_scaled", 
+                     with_mean = TRUE) %>%
+  ml_logistic_regression(features_col = "features_scaled", 
+                         label_col = "not_working")
+pipeline_perfiles
+```
+
+Ahora particionamos:
+
+```{r}
+perfiles_part <- sdf_random_split(perfiles_tbl, entrena = 0.8, prueba = 0.2)
+```
+
+ajustamos
+
+```{r}
+reg_perfiles <- ml_fit(pipeline_perfiles, perfiles_part$entrena)
+reg_perfiles
+```
+
+Predicciones para el conjunto de validación
+
+```{r}
+preds <- ml_transform(reg_perfiles, perfiles_part$prueba)
+colnames(preds)
+preds_df <- preds %>% select(not_working, probability, prediction) %>% 
+  sdf_separate_column("probability", into = c("p_working", "p_not_working")) %>% 
+  collect 
+ggplot(preds_df, aes(x = p_not_working)) + geom_histogram()
+```
+
+
+## Cache y paralelización
+
+Si vamos a reusar un DataFrame de Spark en varias ocasiones, conviene leerlo a memoria
+(usando memory = TRUE), o usando sdf_cache() (ver Storage en el Spark UI). 
+
+```{r}
+perfiles_tbl <- tbl_cache(sc, "perfiles")
+```
+
+
+
+
+
+
+
+
+## Parquet
+
+
+Y podemos guardar también dataframes de Spark a disco, por ejemplo, particionamos y
+escribimos en formato de Parquet:
+
+```{r}
+spark_write_parquet(perfiles, path = "../../datos/profiles.parquet",
+                    partition_by = "a_mes")
+```
+
+```{r}
+perfiles_2012 <- spark_read_parquet(sc, name = "perfiles_2", 
+  path = "../../datos/profiles.parquet/a_mes=2012-*", memory = TRUE, 
+  overwrite = TRUE) #%>% 
+perfiles_2012  %>% 
+  summarise(last_online_min = min(last_online),
+            last_online_max = max(last_online)) %>%
+  collect()
+```
+
+
+
+---
+
+
+```{r}
+spark_disconnect(sc)
+```
+
