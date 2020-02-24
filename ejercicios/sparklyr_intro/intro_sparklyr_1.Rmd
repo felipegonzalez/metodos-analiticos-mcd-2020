@@ -6,8 +6,11 @@ output: html_notebook
 En esta parte veremos algunos aspectos básicos de Spark, que nos servirá para
 escalar  análisis (tanto a máquinas con muchos cores y memoria como a clusters para
 los problemas más grande). En primer lugar, notamos que cuando es posible,
-es más simple y rápidos usar máquinas más grandes y trabajar con las herramientas
-más flexibles que conmunmente utilizamos (pandas y dplyr), ver por ejemplo [aquí](https://h2oai.github.io/db-benchmark/).
+es más simple y rápido usar máquinas más grandes y trabajar con las herramientas
+más flexibles que conmunmente utilizamos (pandas y dplyr), ver por ejemplo [aquí](https://h2oai.github.io/db-benchmark/), o utilizar bases de datos tradicionales apropiadamente
+indexadas,
+ver por ejemplo [esta plática](https://databricks.com/session/not-your-fathers-database-how-to-use-apache-spark-properly-in-your-big-data-architecture).
+.
 
 
 ## Conectarse a un cluster
