@@ -4,7 +4,7 @@ output: html_notebook
 ---
 
 En esta parte veremos algunos aspectos básicos de Spark, que nos servirá para
-escalar nuestro análisis (tanto a máquinas con muchos cores y memoria como a clusters para
+escalar  análisis (tanto a máquinas con muchos cores y memoria como a clusters para
 los problemas más grande). En primer lugar, notamos que cuando es posible,
 es más simple y rápidos usar máquinas más grandes y trabajar con las herramientas
 más flexibles que conmunmente utilizamos (pandas y dplyr), ver por ejemplo [aquí](https://h2oai.github.io/db-benchmark/).
@@ -45,15 +45,13 @@ perfiles_tbl <- spark_read_csv(sc,
   path = "../../datos/profiles.csv",
   name = "perfiles",
   escape = "\"", 
-  options = list(multiline = TRUE),
+  options = list(multiline = TRUE), 
   repartition = 8)
 ```
 
-Nótese que aquí hicimos una partición de los datos explícita. Cuando transformamos o 
+Nótese que aquí hicimos una partición de los datos explícita (si los
+datos están distribuidos, las particiones son implícitas). Cuando transformamos o 
 filtramos esta tabla, puede haber 8 ejecutores trabajando en paralelo.
-
-
-
 
 ## Básicos de manipulación y análisis
 
@@ -61,9 +59,20 @@ Usamos dplyr y sparklyr para empujar código a spark, donde se ejecutan los quer
 de *dplyr*:
 
 ```{r}
-perfiles_tbl %>% group_by(age) %>% tally()
+perfiles_tbl %>% tally()
 ```
 
+
+- Revisa ahora [la webUI de Spark](http://0.0.0.0:4040/jobs/). Identifica el trabajo
+que acabamos de correr. Revisa sus dos etapas (stages), que corresponden a una agregación
+dentro de cada partición (donde hay una task para cada partición) y luego un shuffle (Exchange) para agrupar los resultados de cada partición. Los *shuffles* tienden a ser las operaciones más
+costosas (hay que mover datos), y ocurren por ejemplo con *group_by* y *joins*.
+
+Prueba después de correr lo siguiente:
+
+```{r}
+perfiles_tbl %>% group_by(sex) %>% tally()
+```
 
 
 ```{r}
@@ -162,7 +171,9 @@ system.time(
 ```
 
 Tarda muy poco porque spark todavía no ha ejecutado código de transformación
-ni ha traido los datos a memoria.
+ni ha traido los datos a memoria. Acciones son *collect*, *tally* y *summarise*, por ejemplo.
+Se puede forzar un cómputo usando la función *compute*, que crea una tabla
+de Spark con el argumento que recibe y la guarda en memoria con un nombre.
 
 ## Funciones que transforman un DataFrame de Spark
 
@@ -202,7 +213,7 @@ modelos y predicciones a partir de DataFrames de Spark.
 - Pipeline: cadena de estimadores y transformadores. Es un estimador, y cuando se ajusta produce un transformador.
 
 - Los transformadores definidos en Spark comienzan con "*ft_*, puedes ver por ejemplo [aqui](https://spark.apache.org/docs/2.4.0/ml-features.html). Todos los transformadores y estimadores de spark pueden accederse desde sparklyr.
-- Los estimadores usuales de Spark comienzan con *ml_*, como 
+- Los estimadores de machine learning de Spark comienzan con *ml_*, como 
 ml_linear_regression, ml_gradient_boosted_trees, ml_bisecting_kmeans, etc.
 
 Por ejemplo:
@@ -333,22 +344,18 @@ datos_tbl %>% spark_apply(function(df) {
 }, group_by = "tipo")
 ```
 
-## Shuffle
-
-Una de las operaciones más costosas es el *shuffle* que es necesario cuando se tienen
-que enviar entre trabajadores. Ejemplos usuales son *group_by*, *joins*, *repartition* (según
-alguna variable). 
 
 
 ## Parquet
-
 
 Y podemos guardar también dataframes de Spark a disco, por ejemplo, particionamos y
 escribimos en formato de Parquet:
 
 ```{r}
-spark_write_parquet(perfiles, path = "../../datos/profiles.parquet",
-                    partition_by = "a_mes")
+spark_write_parquet(perfiles_tbl %>% 
+    mutate(a_mes = substr(last_online, 0, 6)),
+  path = "../../datos/profiles.parquet",
+  partition_by = "a_mes")
 ```
 
 ```{r}
@@ -361,9 +368,6 @@ perfiles_2012  %>%
   collect()
 ```
 
-
-
----
 
 
 ```{r}
