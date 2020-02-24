@@ -1061,10 +1061,13 @@ de spark de otra forma):
 
 ```{r,  message=FALSE, warning=FALSE}
 rm(list = c('dat_netflix', 'dat_entrena_2','dat_entrena_c'))
+library(tidyverse)
 library(sparklyr)
 # configuración para spark
 config <- spark_config()
-config$`sparklyr.shell.driver-memory` <- "4G"
+config$`spark.env.SPARK_LOCAL_IP.local` <- "0.0.0.0"
+config$`sparklyr.shell.driver-memory` <- "6G"
+config$spark.executor.memory <- "1G"
 ```
 
 ```{r}
@@ -1072,3 +1075,137 @@ config$`sparklyr.shell.driver-memory` <- "4G"
 sc <- spark_connect(master = "local", config = config)
 spark_set_checkpoint_dir(sc, './checkpoint')
 ```
+
+
+```{r leertabla}
+dat_tbl <- spark_read_csv(sc, name="netflix", "../datos/netflix/dat_muestra_nflix.csv") 
+dat_tbl <- dat_tbl %>% select(-fecha)
+```
+
+```{r}
+usuario_val <- dat_tbl %>% select(usuario_id) %>% 
+  distinct() %>% 
+  sdf_sample(fraction = 0.1) %>% compute("usuario_val")
+pelicula_val <- dat_tbl %>% select(peli_id) %>%
+  distinct() %>% 
+  sdf_sample(fraction = 0.1) %>% compute("pelicula_val")
+valida_tbl <- dat_tbl %>% 
+  inner_join(usuario_val) %>% 
+  inner_join(pelicula_val) %>% 
+  compute("valida_tbl")
+```
+
+```{r}
+entrena_tbl <- dat_tbl %>% anti_join(valida_tbl) %>% 
+  compute("entrena_tbl")
+entrena_tbl %>% tally()
+valida_tbl %>% tally()
+```
+
+Vamos a hacer primero una descomposición en $15$ factores,
+con regularización relativamente alta:
+
+```{r als-spark}
+modelo <- ml_als(entrena_tbl, 
+              rating_col = 'calif',
+              user_col = 'usuario_id',
+              item_col = 'peli_id', 
+              rank = 15, reg_param = 0.1,
+              checkpoint_interval = 5,
+              max_iter = 50)
+# Nota: checkpoint evita que la gráfica de cálculo
+# sea demasiado grande. Cada 5 iteraciones hace una
+# nueva gráfica con los resultados de la última iteración.
+```
+
+```{r}
+modelo
+```
+
+Hacemos predicciones para el conjunto de validación:
+
+```{r, warning = FALSE, message = FALSE, fig.width=5, fig.asp=0.7}
+preds <- ml_predict(modelo, valida_tbl) %>%
+  mutate(prediction = ifelse(isnan(prediction), 3.5, prediction))
+ml_regression_evaluator(preds, label_col = "calif", prediction_col = "prediction",
+  metric_name = "rmse")
+```
+
+Y podemos traer a R los datos de validación (que son chicos) para examinar:
+
+```{r}
+preds_df <- preds %>% collect() #traemos a R con collect
+ggplot(preds, aes(x = prediction)) + geom_histogram()
+```
+
+
+Y redujimos considerablemente el error del modelo base. Examinamos 
+ahora las dimensiones asociadas con películas:
+
+
+```{r}
+modelo$item_factors
+```
+
+```{r}
+V_df <- modelo$item_factors %>% select(id, features_1:features_5) %>% collect()
+```
+
+Nota: La columna *features* contiene la misma información de *feature_1,feature_2,...*, pero en forma de lista.
+
+Examinemos la interpretación de los factores latentes de las
+películas. 
+
+```{r}
+medias_peliculas <- entrena_tbl %>% group_by(peli_id) %>% 
+  summarise(num_calif_peli = n(), media_peli = mean(calif)) %>% 
+  collect()
+latentes_pelis <- V_df %>% 
+  rename(peli_id = id) %>% 
+  left_join(pelis_nombres %>% left_join(medias_peliculas))
+latentes_pelis <- latentes_pelis %>% 
+    mutate(num_grupo = ntile(num_calif_peli, 10))
+```
+
+Para la primera dimensión latente:
+
+
+```{r}
+top_tail <- function(latentes_pelis, feature){
+top_df <- arrange(latentes_pelis, {{ feature }} ) %>% 
+  select(nombre, {{ feature }}, media_peli, num_calif_peli) %>% 
+  filter(num_calif_peli > 2000) %>% 
+  head(100) 
+tail_df <- arrange(latentes_pelis, {{ feature }} ) %>% 
+  select(nombre, {{ feature }}, media_peli, num_calif_peli) %>% 
+  filter(num_calif_peli > 2000) %>% 
+  tail(100)
+print(top_df)
+print(tail_df)
+bind_rows(top_df, tail_df)
+}
+res <- top_tail(latentes_pelis, features_1)
+```
+
+La segunda dimensión latente:
+
+```{r}
+res <- top_tail(latentes_pelis, features_2)
+```
+
+**Nota**: Podemos usar **ml_recommend** para producir recomendaciones de películas para
+usuarios, o para cada película los usuarios más afines.
+
+```{r}
+#top_recom <- ml_recommend(modelo, type = "users", n = 2) 
+```
+
+
+```{r}
+sparklyr::spark_disconnect_all()
+```
+
+### Ejercicio {-}
+Examina otras dimensiones latentes, ¿qué puedes interpretar?
+
+
