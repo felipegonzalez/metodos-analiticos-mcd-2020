@@ -16,7 +16,8 @@ Hay varios enfoques que podemos utilizar para atacar este problema:
 
 - **Principalmente basados en contenido**:  En función de características de los estímulos, productos o películas (por ejemplo, género, actores, país de origen, año, etc.) intentamos predecir el gusto por el estímulo. En este enfoque, construimos variables derivadas del contenido de los artículos (por ejemplo: qué actores salen, año, etc. o en textos palabras que aparecen), e intentamos predecir el gusto a partir de esas características. 
 
-Ejemplo: Si mu gustó *Twilight* entonces el sistema recomienda otros dramas+vampiros ("por ejemplo entrevista con un vampiro", por contenido).
+Ejemplo: Si mu gustó *Twilight* entonces el sistema recomienda otros dramas+vampiros ("
+por ejemplo "Entrevista con un vampiro").
 
 - **Principalmente colaborativos**: utilizamos gustos o intereses de usuarios/artículos similares --- en el sentido de que les han gustado los mismos artículos/les gustaron a las mismas personas.
 
@@ -80,7 +81,9 @@ Por estas razones, típicamente no es posible usar técnicas estadísticas de im
 
 Vamos a comenzar considerando modelos muy simples. El primero que se nos puede ocurrir es uno
 de homogeneidad de gustos: para una persona $i$, nuestra predicción de su gusto por la película
-$j$ es simplemente la media de la película $j$ sobre todos los usuarios que la han visto. Este sería un buen modelo si los gustos fueran muy parecidos sobre todos los usuarios.
+$j$ es simplemente la media de la película $j$ sobre todos los usuarios que la han visto. 
+
+Este sería un buen modelo si los gustos fueran muy parecidos sobre todos los usuarios. Esta sería una recomendación de "artículos populares".
 
 Introducimos la siguente notación:
 
@@ -133,7 +136,6 @@ cuando tenemos cierta información de usuarios y de películas.
 
 
 Los datos del concurso de Netflix originalmente vienen en archivos de texto, un archivo por película.
-
 
 The movie rating files contain over $100$ million ratings from $480$ thousand
 randomly-chosen, anonymous Netflix customers over $17$ thousand movie titles.  The
@@ -549,15 +551,15 @@ Por ejemplo:
 
 
 $$
-\hat{x_{ij}} = \hat{\mu} + \frac{n_i}{\lambda+n_i} \hat{c_i} + \frac{m_j}{\lambda+m_j}\hat{d_j} 
+\hat{x_{ij}} = \hat{\mu} + \frac{n_i}{n_i+\lambda} \hat{c_i} + \frac{m_i}{m_i + \lambda}\hat{d_j} 
 $$
 Que equivale a encoger las predicciones hacia la media general cuando el número de evaluaciones
 es bajo. El grado de encogimiento depende de $\lambda$.
 
 ```{r, fig.width=5, fig.asp=0.7}
 pred_encoger <- function(media, num_usuario, num_peli, media_usu, media_peli, calif, lambda){
-        coef_usu <- num_usuario / (num_usuario + lambda)
-        coef_peli <- num_peli / (num_peli + lambda)
+        coef_usu <- 1 / (1 + lambda / num_usuario)
+        coef_peli <- 1 / (1 +  lambda / num_peli)
         pred <- media + coef_usu * (media_usu - media) + coef_peli * (media_peli - media)
         pred <- ifelse(is.na(pred), media, pred) # en caso de que no haya califs de usuario o peli
         pred
@@ -818,6 +820,9 @@ que tienen por estos "conceptos".
 En esta parte, consideramos la idea de utilizar reducción de dimensionalidad para
 hacer recomendaciones. Esta idea propone que hay ciertos factores latentes (no observados)
 que describen películas con "contenido implícito similar", y usuarios según su interés en esa dimensión.
+Otra manera de llamar estos factores latentes es **embedding**: buscamos un **embedding** (una 
+representación numérica en cierta dimensión no muy alta) que nos permita predecir el gusto
+de un usuario por una película.
 
 Este método nos permitirá también controlar mejor los resultados ruidosos que
 obtuvimos en los ejemplos anteriores (usando regularización y reducción
