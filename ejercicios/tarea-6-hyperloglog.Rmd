@@ -11,6 +11,9 @@ library(tidyverse)
 config <- spark_config()
 # esta línea es necesaria para que la ui funcione en el contenedor:
 config$`spark.env.SPARK_LOCAL_IP.local` <- "0.0.0.0"
+# puedes ajustar si es necesario 
+# la memoria según el tamaño de los datos y tus recursos:
+#config$`sparklyr.shell.driver-memory` <- "8G"
 sc <- spark_connect(master = "local", config = config)
 ```
 
@@ -22,7 +25,7 @@ intentar correrlo con datos más chicos):
 ```{r}
 datos_sim <- sdf_along(sc, 1:5e7) %>% 
   mutate(id = floor(1e8*rand())) %>% 
-  compute(name = "datos_sim")
+  sdf_repartition(10) %>% compute(name = "datos_sim") 
 ```
 
 Y comparamos el tiempo de corrida de estimar el número de 
@@ -39,7 +42,7 @@ conteo_hll
 Contra la estimación usual agregando y contando renglones únicos:
 
 ```{r}
-# conteo agregando
+# conteo usual agregando
 system.time(
 conteo_agg <- datos_sim %>% distinct() %>% tally() %>% collect()
 )
@@ -51,6 +54,10 @@ conteo_agg
 
 **Pregunta 2** ¿Como se compara el valor verdadero de únicos en esta tabla
 con la estimación de hyperloglog? Calcula el error absoluto y relativo
+
+**Nota**: si quieres hacer experimentos más grandes y tienes memoria suficiente,
+puedes ver en el código de arriba cómo ajustar la memoria del driver y los
+ejecutores.
 
 ## Ejercicio 2
 
