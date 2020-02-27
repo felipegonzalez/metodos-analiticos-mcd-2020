@@ -1,0 +1,88 @@
+---
+title: "Conteo de elementos distintos y hyperloglog"
+output: html_notebook
+---
+
+## Ejercicio 1
+
+```{r}
+library(sparklyr)
+library(tidyverse)
+config <- spark_config()
+# esta línea es necesaria para que la ui funcione en el contenedor:
+config$`spark.env.SPARK_LOCAL_IP.local` <- "0.0.0.0"
+sc <- spark_connect(master = "local", config = config)
+```
+
+Consideramos los siguientes datos sintéticos, donde los id's son
+enteros entre 0 y 10^8 -1. Observamos 50 millones de registros, donde
+algunos ids están repetidos (nota: si obtienes un mensaje de error puedes
+intentar correrlo con datos más chicos):
+
+```{r}
+datos_sim <- sdf_along(sc, 1:5e7) %>% 
+  mutate(id = floor(1e8*rand())) %>% 
+  compute(name = "datos_sim")
+```
+
+Y comparamos el tiempo de corrida de estimar el número de 
+ids distintos usando hyperloglog:
+
+```{r}
+system.time(
+  conteo_hll <- datos_sim %>% 
+    summarise(distintos = approx_count_distinct(id)) %>% collect()
+)
+conteo_hll 
+```
+
+Contra la estimación usual agregando y contando renglones únicos:
+
+```{r}
+# conteo agregando
+system.time(
+conteo_agg <- datos_sim %>% distinct() %>% tally() %>% collect()
+)
+conteo_agg 
+```
+
+
+**Pregunta 1**: ¿Cúantes veces más rápido el hyperloglog que el conteo usual?
+
+**Pregunta 2** ¿Como se compara el valor verdadero de únicos en esta tabla
+con la estimación de hyperloglog? Calcula el error absoluto y relativo
+
+## Ejercicio 2
+
+Haremos varias corridas
+para ver cómo se comporta el error de estimación del hyperloglog:
+
+```{r}
+datos_sim <- sdf_along(sc, 1:1e6) %>% 
+    mutate(id = floor(1e7*rand())) 
+estimar_distintos <- function(datos_sim){
+  conteo_hll <- datos_sim %>% 
+    summarise(distintos_hll = approx_count_distinct(id)) %>% collect()
+  conteo_agg <- datos_sim %>% 
+    distinct() %>% tally() %>% collect() 
+  bind_cols(conteo_hll, conteo_agg) %>% 
+    mutate(error_rel = distintos_hll / n  - 1 ) 
+}
+```
+
+```{r}
+estimar_distintos(datos_sim)
+```
+
+Hacemos varias simulaciones:
+
+```{r}
+error_sim <- map_dbl(1:50, ~ estimar_distintos(datos_sim) %>% pull(error_rel))
+```
+
+**Pregunta 3** En términos del error relativo, ¿el estimador HLL muestra
+sesgo? (Grafica y calcula su media) ¿Cuál es el máximo error que observaste? 
+
+```{r}
+spark_disconnect_all()
+```
