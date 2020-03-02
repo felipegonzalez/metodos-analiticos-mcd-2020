@@ -1209,3 +1209,465 @@ sparklyr::spark_disconnect_all()
 Examina otras dimensiones latentes, ¿qué puedes interpretar?
 
 
+
+## Descenso en gradiente estocástico
+
+En esta parte veremos otra manera de construir factorización de matrices
+para filtrado colaborativo, usando descenso en gradiente estocástico. Este método es similar a mínimos cuadrados alternados (ALS).
+
+Para un recordatorio de descenso en gradiente, y la versión
+estocástica, puedes ver por ejemplo, el artículo de
+[wikipedia - Stochastic Gradient Descent](https://en.wikipedia.org/wiki/Stochastic_gradient_descent) 
+o las [notas de aprendizaje 
+de máquina](https://felipegonzalez.github.io/aprendizaje-maquina-2017/redes-neuronales-parte-2.html#descenso-estocastico).
+
+
+Consideremos el problema de factorización que queremos resolver.
+Si $X$ ($n\times p$) es la matriz de calificaciones, quisieramos encontrar matrices $U$ y $V$ (de tamaños $n\times k$ y $p\times k$) tales que
+$$X\approx UV^t,$$
+donde los reglones de $U$ son los descriptores de los usuarios
+y los renglones de $V$ son los descriptores de las películas (ver sección anterior). Más expecíficamente, buscamos minimizar
+
+\begin{equation}
+\min_{U,V} \sum_{(i,j) obs} (x_{ij} - u_iv_j^t)^2
+\end{equation}
+donde $u_i$ es el renglón $i$-ésimo de $U$ y $v_j$ es el renglón
+$j$-ésimo de $V$. En términos de sus componentes, queremos minimizar
+
+\begin{equation}
+L =  \sum_{(i,j) obs} (x_{ij} - \sum_{l=1}^k u_{i,l}v_{j,l})^2
+\end{equation}
+
+Escribimos $$ L_{i,j} = e_{i,j}^2 =  (x_{ij} - \sum_{l=1}^k u_{i,l}v_{j,l})^2$$.
+
+Para encontrar el gradiente, derivamos con respecto a cada parámetro
+($u_{i,l}$ y $v_{j,l}$). Empezamos con cada término $L_{i,j}$:
+
+$$\frac{\partial L_{i,j}}{\partial u_{i,s}} = -2e_{i,j} v_{j,s}
+$$
+
+y
+$$\frac{\partial L_{i,j}}{\partial v_{j,t}} = -2e_{i,j} u_{i,t}
+$$
+
+El resto de las derivadas son iguales a $0$ (para otros $u_a^{(m)}$, 
+$v_b^{(m)}$). Esto nos da la dirección del gradiente en cada paso del descenso estocástico. 
+
+```{block2, type = 'comentario'}
+Sea $\gamma >0$ el tamaño de paso (tasa de aprendizaje) de descenso estocástico.
+Para cada evaluación $x_{i,j}$, la actualización de descenso está dada por,
+en forma vectorial:
+                                                                            
+$$
+u_i^{(n+1)} = u_i^{(n)} +\gamma e_{i,j} v_j^{(n)}
+$$
+y
+$$
+v_j^{(n+1)} = v_j^{(n)} +\gamma e_{i,j} u_j^{(n)}
+$$
+  
+Inicializamos las matrices $U$ y $V$ con valores aleatorios chicos.
+```
+  
+### Agregando el modelo base (sesgos)
+
+Podemos también agregar el modelo base (que a veces es llamado modelo
+con *sesgos*):
+
+\begin{equation}
+L =  \sum_{(i,j) obs} (x_{ij} - a_i - b_j - \sum_{l=1}^k u_{i}^{(l)}v_{j}^{(l)})^2
+\end{equation}
+
+Y las derivadas adicionales están dadas por
+
+$$\frac{\partial L_{i,j}}{\partial a_i} = -2e_{i,j} 
+$$
+
+$$\frac{\partial L_{i,j}}{\partial b_j} = -2e_{i,j} 
+$$
+
+y el resto de las derivadas (para otras $a_s$ y $b_t$) son iguales a $0$.
+
+
+```{block2, type='resumen'}
+- Nótese que en cada paso de descenso estocástico, las actualizaciones
+sólo involucran los parámetros asociados con el usuario/película 
+que estamos evaluando, y el cálculo es simple.
+- No necesitamos tener en memoria todos los datos, podemos leerlos
+en lotes y procesar cada lote sucesivemante.
+```
+
+### Regularización
+
+Finalmente, podemos agregar regularización para controlar el sobreajuste
+(por ejemplo, usuarios con pocas evaluaciones, o películas con
+pocas evaluaciones). 
+
+La función a minimizar es ahora
+
+\begin{equation}
+L =  \sum_{(i,j) obs} (x_{ij} - \mu - a_i - b_j - \sum_{l=1}^k u_{i,l}v_{j,l})^2 +
+\lambda \left (  \sum_i ||u_i||^2 +  \sum_j ||v_j||^2 +  \sum_i a_i^2 + \sum_j b_j^2 \right )
+(\#eq:regdescenso)
+\end{equation}
+
+donde también es posible usar parámetros de regularización distintos ($\lambda$) para
+los vectores y los sesgos.
+
+```{block2, type = 'resumen'}
+Sea $\gamma >0$ el tamaño de paso (tasa de aprendizaje) de descenso estocástico,
+y $\lambda \geq 0$ una constante de regularización. Sea $n_i$ el número
+de evaluaciones del usuario $i$ y $m_j$ el número de evaluaciones para
+la película $j$.
+Para cada evaluación $x_{i,j}$, la actualización de descenso está dada,
+en forma vectorial, por:
+                                                                            
+$$
+u_i^{(n+1)} = u_i^{(n)} + \gamma \left ( e_{i,j} v_j^{(n)} - \frac{\lambda}{n_i} u_i^{(n)} \right )
+$$
+  
+y
+
+$$
+v_j^{(n+1)} = v_j^{(n)} + \gamma \left ( e_{i,j} u_j^{(n)} -  \frac{\lambda}{m_j} v_j^{(n)} \right )
+$$
+
+
+Para los sesgos, las actualizaciones son (no regularizamos la media global):
+
+$$\mu^{(n+1)} = \mu^{(n)} + \gamma e_{i,j}$$
+  
+$$a_i^{(n+1)} = a_i^{(n)} + \gamma \left ( e_{i,j} - \frac{\lambda}{n_i} a_i^{(n)} \right )$$
+  
+$$b_j^{(n+1)} = b_i^{(n+1)} + \gamma \left ( e_{i,j} - \frac{\lambda}{m_j} b_j^{(n)} \right )$$
+  
+Inicializamos las matrices $U$ y $V$ con valores aleatorios chicos.
+```
+
+- Puedes ver [este video](https://www.youtube.com/watch?v=GGWBMg0i9d4&index=56&list=PLLssT5z_DsK9JDLcT8T62VtzwyW9LNepV), de los autores de nuestro libro de texto
+
+- Nótese que dividimos entre el número de evaluaciones de usuarios y películas a la
+constante de regularización. Esto se puede entender observando que el término
+de regularización en \@ref(eq:regdescenso) se puede poner bajo la suma
+dividiendo por estos factores. También se puede observar que el valor esperado
+del gradiente calculado de esta manera es \@ref(eq:regdescenso) (excepto por
+un factor constante).
+
+- Este es un tipo de regularización distinto al que usamos en el ejemplo
+de mínimos cuadrados alternados.
+
+### Ejemplo (Netflix)
+Usaremos una  implementación en C++ para tener mejor desempeño 
+(una introducción a extensiones de C++ para R está en 
+[@advanced-r]).
+
+
+```{r}
+library(Rcpp)
+Rcpp::sourceCpp('../src/factorizacion_mat/descenso_estocastico.cpp')
+Rcpp::sourceCpp('../src/factorizacion_mat/calc_error_bias.cpp')
+```
+
+```{r, comment=""}
+cat(readLines('../src/factorizacion_mat/descenso_estocastico.cpp'), sep = "\n")
+```
+
+
+Por ejemplo:
+
+```{r}
+library(Matrix)
+# entrenamiento
+set.seed(1182)
+#permutamos para las rondas de descenso estocástico
+permutacion <- sample(1:length(dat_entrena$usuario_id), 
+                      length(dat_entrena$usuario_id))
+i <- dat_entrena$usuario_id[permutacion]
+j <- dat_entrena$peli_id[permutacion]
+y <- dat_entrena$calif[permutacion]
+# validación
+i_val <- dat_valida$usuario_id
+j_val <- dat_valida$peli_id
+y_val <- dat_valida$calif
+```
+
+Podemos agregar también dos usuarios nuevos con evaluaciones
+opuestas (puedes llenar con tus preferencias)
+```{r}
+i_usuario_1 <- rep(100001, 12)
+i_usuario_2 <- rep(100002, 12)
+nombres_evaluar <- data_frame(nombre = 
+                    c('Ghost', 'Pretty Woman', 'Driving Miss Daisy',
+                      'The Fast and the Furious', 'Meet the Fockers',
+                     'Independence Day', 'Top Gun',
+                     'Being John Malkovich', 'A Clockwork Orange', 
+                     'Fight Club', 'Pulp Fiction',
+                     'The Terminator'))
+evals_1 <- c(1, 2, 2, 4, 3, 4, 4, 2, 4, 5, 5, 5)
+evals_2 <- 6 - evals_1
+nombres_evaluar$evals <- evals_1
+nombres_evaluar
+j_evaluar <- medias_pelis %>% semi_join(nombres_evaluar) %>% pull(peli_id)
+
+```
+
+
+
+```{r descenso}
+i <- c(i, i_usuario_1, i_usuario_2)
+j <- c(j, j_evaluar, j_evaluar)
+y <- c(y, evals_1, evals_2)
+X <- sparseMatrix(i, j, x = y, dims=c(max(i), 17770))
+dim(X)
+```
+
+```{r}
+#otra manera de inicializar es con resultados de SVD
+#library(irlba)
+#test <- irlba(X, nv = 4, nu = 4)
+#U_0 <- test$u%*%sqrt(diag(test$d))
+#V_0 <- test$v%*%sqrt(diag(test$d))
+#inicialización
+set.seed(2805)
+U_0 <- matrix(rnorm(4 * max(i), 0, 0.01), ncol = 4)
+V_0 <- matrix(rnorm(4 * 17770, 0, 0.01), ncol = 4)
+U <- U_0
+V <- V_0
+num_usu <- rowSums(X>0) + 1
+num_peli <- colSums(X>0) + 1
+mu <- mean(y)
+a <- rowSums(X)/rowSums(X>0) - mean(y)
+a[is.nan(a)] <- 0
+b <- colSums(X)/colSums(X>0) -  mean(y)
+print(sqrt(calc_error(i, j, y, U, V, mu, a, b)))
+
+for(iter in 1:10){
+  # nota: la función descenso_gradiente (C++) no hace copias de U,V,a,b
+  # cambia in-place estos parámetros
+  salida <- descenso_estocastico(i, j, y, U, V, mu, a, b, 
+              gamma = 0.005, lambda_mat = 10, lambda_sesgos = 10,
+              n_iter = 1, num_peli, num_usu)
+  error_entrena <- sqrt(calc_error(i, j, y, U, V, mu, a, b))
+  error_valida <- sqrt(calc_error(i_val, j_val, y_val, U, V, mu, a, b))
+  sprintf("Iteración: %i, Error entrena: %.4f, Error valida: %.4f", 
+                        iter,
+                        error_entrena, error_valida) %>% print
+
+}
+```
+
+
+```{r}
+usuario_1_u <- U[100001, ]
+prefs_1 <- mu + a[100001] + b + V %*% usuario_1_u %>% as.numeric
+prefs <- data_frame(prefs = prefs_1, peli_id = 1:17770) %>% 
+  left_join(medias_pelis, by = 'peli_id') %>%
+  arrange(desc(prefs)) %>% 
+  filter(num_calif_peli > 500) %>%
+  select(peli_id, nombre, prefs) %>% top_n(100, prefs) 
+ DT::datatable(prefs)
+```
+
+```{r}
+usuario_2_u <- U[100002, ]
+prefs_2 <- mu + a[100002] + b + V %*% usuario_2_u %>% as.numeric
+prefs <- data_frame(prefs = prefs_2, peli_id = 1:17770) %>% 
+  left_join(medias_pelis) %>%
+  arrange(desc(prefs)) %>% 
+  filter(num_calif_peli > 500) %>%
+  select(nombre, prefs) %>% top_n(100, prefs) 
+DT::datatable(prefs)
+```
+
+
+Filtramos para ver películas bien conocidas, y muestreamos para
+empezar a entender el significado de las dimensiones:
+
+```{r, fig.width = 10, fig.asp = 0.7}
+library(ggrepel)
+V_df <- as_data_frame(V) %>% mutate(peli_id=1:nrow(V)) %>%
+  left_join(medias_pelis) 
+set.seed(12211)
+muestra_graf <- V_df %>%
+  filter(num_calif_peli > 10000) %>%
+  sample_n(100)
+ggplot(muestra_graf,
+       aes(x = V1, y= V2, label=nombre, colour=media_peli))+
+  geom_point() + geom_text_repel(size=3.5, segment.alpha = 0.3, direction = 'y')
+```
+
+
+```{r, fig.width = 10, fig.asp = 0.7}
+ggplot(muestra_graf,
+       aes(x = V3, y= V4, label=nombre, colour=media_peli))+
+  geom_point() + geom_text_repel(size=3.5, segment.alpha = 0.3, direction='y')
+```
+
+En la distribución de las películas en el espacio de dimensiones podemos
+apreciar el efecto del encogimiento:
+
+```{r}
+quantile(V_df$num_calif_peli, probs = seq(0, 1, 0.1))
+ggplot(V_df, aes(x = V1, y= V2, label=nombre)) +
+  geom_point(alpha=0.5, size=0.5) + facet_wrap(~ntile(num_calif_peli, 10)) 
+```
+
+## Más acerca del concurso de Netflix
+
+
+Para tener desempeño equivalente los ganadores del concurso de Netflix
+[@Bellkor],
+todavía faltan algunos elementos:
+
+- A partir de $2004$, hubo mejoras a la interfaz de Netflix. Esto provocó
+un incremento general en las calificaciones. Este es un factor (el tiempo),
+que es necesario incluir en el modelo como término adicional (si la calificación
+es antes o después del cambio).
+
+En esta gráfica vemos el promedio local de las calificaciones conforme
+transcurre el tiempo:
+
+```{r, fig.width = 6, fig.asp=0.7}
+library(lubridate)
+ggplot(sample_n(dat_entrena, 5000), aes(x= ymd(fecha), y = calif)) + 
+  geom_smooth(method = 'loess', span=0.3)
+```
+
+
+- Otro efecto, por ejemplo, es que películas más antiguas tienen
+calificaciones más altas (esto puede ser porque son las "sobreviven" en
+los catálogos).
+
+```{r, fig.width = 6, fig.asp=0.7}
+ggplot(filter(medias_pelis, num_calif_peli > 1000), 
+       aes(x = año, y = media_peli)) + 
+  geom_point(alpha=0.4) + geom_smooth(method = 'loess', span=0.4)
+```
+
+- Finalmente, el equipo ganador combinó varios métodos para mejorar la 
+predicción (factores latentes, filtrado colaborativo, en varias versiones,
+y otros (ver por ejemplo [este artículo](https://amba-bigdata.wikispaces.com/file/view/Netflix_general.pdf)).
+
+
+## Retroalimentación implícita
+
+Esta sección está basada en [@recomendacion-implicita].
+
+En el ejemplo que vimos arriba, la retroalimentación es expícita en el 
+sentido de que los usuarios califican los artículos ($1-$ no me gustó nada,
+hasta $5-$ me gustó mucho). Sin embargo, es común encontrar casos
+donde no existe esta retroalimentación explícita, y solo tenemos medidas
+del gusto implícito, por ejemplo:
+
+- Cuántas veces un usuario ha pedido un cierto artículo.
+- Qué porcentaje del programa fue visto.
+- Cuánto tiempo pasó en la página web.
+- Cuántas veces oyó una canción.
+
+Estos datos tienen la ventaja de que describen acciones del usuario,
+en lugar de un rating que puede estar influido por sesgos de imagen
+o de la calificación que "debería" tener un artículo además 
+de la preferencia: quizá
+disfruto muchísimo *Buffy the Vampire Slayer*, pero lo califico con un $3$,
+aunque un documental de ballenas que simplemente me gustó le pongo un $5$.
+En los datos implícitos se vería de todas formas mi consumo frecuente
+de *Buffy the Vampire Slayer*, y quizá unos cuantos de documentales 
+famosos.
+
+Sea $r_{ij}$ una medida implícita como las mencionadas arriba, para el usuario
+$i$ y el artículo $j$. Ponemos $r_{i,j}=0$ cuando no se ha observado interacción
+entre este usuario y el artículo. 
+
+
+Una diferencia importante con los ratings explícitos es que los datos
+implícitos son en un sentido menos informativos que los explícitos:
+
+- Puede ser que el valor de $r_{ij}$ sea relativamente bajo (pocas interacciones), pero de todas formas se trate de un artículo que es muy preferido (por ejemplo, solo vi Star Wars I una vez, pero me gusta mucho). Esto no pasa con los ratings, pues ratings bajos indican baja preferencia.
+
+- Sin embargo, estamos seguros de que niveles altos de interacción (oyó muchas veces una canción, etc.), es indicación de preferencia alta.
+
+- Así que en nuestro modelo no necesariamente queremos predecir directamente la variable $r_{ij}$: puede haber artículos con predicción baja de $r_{ij}$ que
+descubramos de todas formas van a ser altamente preferidos.
+
+
+Una solución propuesta en [@recomendacion-implicita] (e implementada en 
+spark) es darle menos importancia al valor $r_{ij}$ en la construcción
+de los factores latentes. Para hacer esto, primero definimos
+la variable de preferencia
+
+$$p_{ij} = 
+\begin{cases}
+1, &\mbox{si } r_{ij}>0,\\ 
+0, &\mbox{si } r_{ij}=0.\\
+\end{cases}$$
+
+Esta variable $p_{ij}$, cuando vale uno, indica algún nivel de preferencia.
+¿Pero qué tanto valor debemos darle a esta preferencia? Definimos la confianza
+como
+$$c_{ij} = 1+ \alpha r_{ui},$$
+donde $\alpha$ es un parámetro que hay que afinar (por ejemplo $\alpha$ entre $1$ y $50$). Para predicciones de vistas de TV, en [@recomendacion-implicita] utilizan
+$\alpha = 40$, donde $r_{ij}$ es el número de veces que el usuario ha visto
+un programa (contando vistas parciales, así que es un número real).
+
+La función objetivo (sin regularización) se define como
+
+\begin{equation}
+L =  \sum_{(i,j)} c_{ij}(p_{ij}  - \sum_{l=1}^k u_{i,l}v_{j,l})^2
+(#eq:implicita)
+\end{equation}
+
+Nótese la diferencia con el caso explícito. En este caso, los valores
+de $c_{ij}$ (confianza) actúan como un pesos en el ajuste de
+los factores, indicando que valores altos de $r_{ij}$ son más informativos y
+deben contribuir más en el ajuste, sin descalificar que un
+artìculo con $r_{ij}$ bajo puede ser preferido. Adicionalmente, los valores
+para los cuales $p_{ij}=0$ son los que reciben el peso mínimo ($c_{ij}=1$).
+
+Igual que en los ejemplos anteriores, usualmente se agregan términos
+de regularización para los vectores renglón $u_i$ y $v_j$. Como en
+el paper original, este problema se puede resolver usando mínimos cuadrados
+alternados.
+
+### Evaluación para modelos implícitos
+
+La evaluación para modelos implícitos no es tan simple como
+en el caso explícito, pues no estamos modelando
+directamente los valores observados $r_{ij}$.  Medidas
+como RECM o MAD que usamos en el caso explícito
+no son tan apropiadas para este problema. 
+
+Una alternativa es, para cada usuario $i$, ordenar los artículos de 
+mayor a menor valor de $\hat{p}_{ij} = u_iv_j^t$ (canciones, pellículas), y calcular
+
+$$
+rank = \frac{\sum_{j} p_{ij}rank_{i,j}}{\sum_j p_{ij}}
+$$
+
+donde $rank_{ij}$ es el percentil del artículo $j$ en la lista ordenada
+de artículos. $rank_{ij}=0$ para el mejor artículo, y $rank_{ij}=1$ para el peor.
+
+Esta suma es un promedio sobre los rankings del usuario con $p_{ij}=1$, 
+y **menores valores son mejores** (quiere decir que hubo alguna preferencia
+por los items con $rank_{ij}$ bajo, es decir, los mejores de nuestra lista predicha. Es posible también hacer un promedio ponderado
+por $r_{ij}$:
+$$
+rank = \frac{\sum_{j} r_{ij}rank_{i,j}}{\sum_j r_{ij}}
+$$
+que es lo mismo que la ecuación anterior pero ponderando por el interés mostrado
+en cada artículo con $p_{ij}=1$.
+
+- Menores valores de $rank$ son mejores.
+- Si escogemos al azar el ordenamiento de los artículos, el valor esperado de $rank_{ij}$ es $0.5$ (en medio de la lista), lo que implica que el valor esperado
+de $rank$ es $0.50$. Cualquier modelo con $rank\geq 0.5$ es peor que dar recomendaciones al azar.
+
+Esta cantidad la podemos evaluar en entrenamiento y en validación. Para construir
+el conjunto de validación podemos hacer:
+
+- Escogemos un número de usuarios para validación (por ejemplo $20\%$)
+- Ponemos $50\%$ de los artículos evaluados por estas personas en validación, por ejemplo.
+
+Estas cantidades dependen de cuántos datos tengamos, como siempre, para tener
+un tamaño razonable de datos de validación.
+
+
+
