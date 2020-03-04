@@ -1445,7 +1445,7 @@ for(iter in 1:10){
   # nota: la función descenso_gradiente (C++) no hace copias de U,V,a,b
   # cambia in-place estos parámetros
   salida <- descenso_estocastico(i, j, y, U, V, mu, a, b, 
-              gamma = 0.005, lambda_mat = 10, lambda_sesgos = 10,
+              gamma = 0.007, lambda_mat = 20, lambda_sesgos = 20,
               n_iter = 1, num_peli, num_usu)
   error_entrena <- sqrt(calc_error(i, j, y, U, V, mu, a, b))
   error_valida <- sqrt(calc_error(i_val, j_val, y_val, U, V, mu, a, b))
@@ -1489,7 +1489,7 @@ V_df <- as_data_frame(V) %>% mutate(peli_id=1:nrow(V)) %>%
   left_join(medias_pelis) 
 set.seed(12211)
 muestra_graf <- V_df %>%
-  filter(num_calif_peli > 10000) %>%
+  filter(num_calif_peli > 20000) %>%
   sample_n(100)
 ggplot(muestra_graf,
        aes(x = V1, y= V2, label=nombre, colour=media_peli))+
@@ -1508,7 +1508,7 @@ apreciar el efecto del encogimiento:
 
 ```{r}
 quantile(V_df$num_calif_peli, probs = seq(0, 1, 0.1))
-ggplot(V_df, aes(x = V1, y= V2, label=nombre)) +
+ggplot(V_df, aes(x = V1, y= V2, label=Snombre)) +
   geom_point(alpha=0.5, size=0.5) + facet_wrap(~ntile(num_calif_peli, 10)) 
 ```
 
