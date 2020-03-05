@@ -1,0 +1,108 @@
+---
+title: "Recomendación con datos de Netflix"
+output: html_notebook
+---
+
+
+Para este ejercicio, necesitas bajar a la carpeta datos/netflix los [datos de Netflix](https://s3.amazonaws.com/ma-netflix/dat_muestra_nflix.csv
+)
+
+Lee y prepara los datos con el siguiente código:
+
+```{r leertabla1}
+library(tidyverse)
+# nombres de películas
+pelis_nombres <- read_csv('../../datos/netflix/movies_title_fix.csv', 
+  col_names = FALSE, na = c("", "NA", "NULL"))
+names(pelis_nombres) <- c('peli_id','año','nombre')
+# leer ratings
+dat_netflix <- read_csv( "../../datos/netflix/dat_muestra_nflix.csv", 
+      progress = FALSE) %>% 
+    select(-usuario_id_orig) %>% 
+    mutate(usuario_id = as.integer(as.factor(usuario_id))) #usuario único
+```
+
+Separa entrenamiento y validación:
+
+```{r}
+set.seed(28882)
+# seleccionar usuarios y peliculas
+usuarios <- dat_netflix %>% select(usuario_id) %>% distinct
+valida_usuarios <- usuarios %>% sample_frac(0.2) 
+peliculas <-  dat_netflix %>% select(peli_id) %>% distinct
+valida_pelis <- peliculas %>% sample_frac(0.2)
+# filtar validación
+dat_valida <- dat_netflix %>% 
+  semi_join(valida_usuarios) %>% semi_join(valida_pelis) 
+# entrenamiento
+dat_entrena <- dat_netflix %>% anti_join(dat_valida)
+n_valida <- dat_valida %>% tally %>% pull(n)
+n_entrena <- dat_entrena %>% tally %>% pull(n)
+sprintf("Entrenamiento: %1d, Validación: %2d, Total: %3d", n_entrena, 
+        n_valida, n_entrena + n_valida)
+```
+
+## Similitud y filtrado colaborativo
+
+
+Primero exploramos similitud coseno entre películas. Como explicamos,
+centramos por usuario:
+
+```{r}
+dat_entrena_c <- dat_entrena %>%
+  group_by(usuario_id) %>%
+  mutate(calif_c = calif - mean(calif)) %>% 
+  ungroup() %>% 
+  select(peli_id, usuario_id, calif_c)
+```
+
+Similitud coseno:
+
+```{r}
+sim_cos <- function(x,y){
+  # obsérvese que excluímos del cálculo NA's
+  pp <- sum(x*y, na.rm = T)
+  pnormas <- sqrt(sum(x^2, na.rm = T)) * sqrt(sum(y^2, na.rm = T))
+  pp / pnormas
+}
+```
+
+```{r}
+ejemplos <- function(pelicula){
+  mi_peli <- filter(dat_entrena_c, peli_id==pelicula) %>% 
+             rename(peli_id_1 = peli_id, calif_c_1 = calif_c)
+  # vamos a calcular todas las similitudes con mi_peli - esto no es buena
+  # idea y discutiremos más adelante cómo evitarlo
+  datos_comp <- left_join(dat_entrena_c, mi_peli)
+  # calcular similitudes
+  out_sum <- datos_comp %>% 
+      group_by(peli_id) %>%
+      summarise(dist = sim_cos(calif_c, calif_c_1), num_pares = n()) %>% 
+      left_join(pelis_nombres)
+  out_sum %>% arrange(desc(dist))  %>% select(nombre, dist, num_pares)
+}
+
+```
+
+```{r}
+# id 28 es Lilo and Stitch
+ejemplos(28) %>% filter(num_pares > 500) %>% head(20)
+```
+
+**Pregunta 1**:
+
+- Escoge 2 o 3 películas que te parezcan interesantes (que tengan al menos unas 1000 evaluaciones). Por ejemplo, alguna película popular de niños, alguna serie, etc. ¿Cuáles son las 10 películas más similares según el código de arriba?
+
+**Pregunta 2**: ¿qué es *num_pares* en la tabla que sale del código de arriba? ¿qué pasa si no filtramos con num_pares > 300 (experimenta haciendo este número más chico o más grande).
+
+**Pregunta 3**: ¿cómo podrías usar este método para hacer recomendaciones a un usuario? Piensa en al menos dos maneras.
+
+
+## Factores latentes y filtrado colaborativo
+
+Revisa el código y las notas que vimos en clase para calcular factores latentes.
+
+**Pregunta 4**: Explica cómo funciona el algoritmo de mínimos cuadrados alternados.
+
+**Pregunta 5**: Si es necesario, revisa la sección 8.1 en [estas notas](https://trusting-payne-50ed4b.netlify.com/redes-neuronales-parte-2.html#algoritmo-de-descenso-estocastico). Explica cuál es la idea general del método de descenso en gradiente estocástico. ¿Por qué puede ser más rápido usar este método que descenso en gradiente usual?
+
