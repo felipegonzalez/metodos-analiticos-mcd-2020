@@ -1445,7 +1445,7 @@ for(iter in 1:10){
   # nota: la función descenso_gradiente (C++) no hace copias de U,V,a,b
   # cambia in-place estos parámetros
   salida <- descenso_estocastico(i, j, y, U, V, mu, a, b, 
-              gamma = 0.007, lambda_mat = 20, lambda_sesgos = 20,
+              gamma = 0.004, lambda_mat = 20, lambda_sesgos = 20,
               n_iter = 1, num_peli, num_usu)
   error_entrena <- sqrt(calc_error(i, j, y, U, V, mu, a, b))
   error_valida <- sqrt(calc_error(i_val, j_val, y_val, U, V, mu, a, b))
@@ -1487,7 +1487,7 @@ empezar a entender el significado de las dimensiones:
 library(ggrepel)
 V_df <- as_data_frame(V) %>% mutate(peli_id=1:nrow(V)) %>%
   left_join(medias_pelis) 
-set.seed(12211)
+set.seed(1221)
 muestra_graf <- V_df %>%
   filter(num_calif_peli > 20000) %>%
   sample_n(100)
@@ -1508,7 +1508,7 @@ apreciar el efecto del encogimiento:
 
 ```{r}
 quantile(V_df$num_calif_peli, probs = seq(0, 1, 0.1))
-ggplot(V_df, aes(x = V1, y= V2, label=Snombre)) +
+ggplot(V_df, aes(x = V1, y= V2, label=nombre)) +
   geom_point(alpha=0.5, size=0.5) + facet_wrap(~ntile(num_calif_peli, 10)) 
 ```
 
@@ -1546,7 +1546,7 @@ ggplot(filter(medias_pelis, num_calif_peli > 1000),
 
 - Finalmente, el equipo ganador combinó varios métodos para mejorar la 
 predicción (factores latentes, filtrado colaborativo, en varias versiones,
-y otros (ver por ejemplo [este artículo](https://amba-bigdata.wikispaces.com/file/view/Netflix_general.pdf)).
+y otros.
 
 
 ## Retroalimentación implícita
