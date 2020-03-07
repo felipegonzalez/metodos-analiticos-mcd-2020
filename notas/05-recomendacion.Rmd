@@ -1578,22 +1578,44 @@ Sea $r_{ij}$ una medida implícita como las mencionadas arriba, para el usuario
 $i$ y el artículo $j$. Ponemos $r_{i,j}=0$ cuando no se ha observado interacción
 entre este usuario y el artículo. 
 
-
 Una diferencia importante con los ratings explícitos es que los datos
 implícitos son en un sentido menos informativos que los explícitos:
 
-- Puede ser que el valor de $r_{ij}$ sea relativamente bajo (pocas interacciones), pero de todas formas se trate de un artículo que es muy preferido (por ejemplo, solo vi Star Wars I una vez, pero me gusta mucho). Esto no pasa con los ratings, pues ratings bajos indican baja preferencia.
+- Puede ser que el valor de $r_{ij}$ sea relativamente bajo (pocas interacciones), pero de todas formas se trate de un artículo que es muy preferido (por ejemplo, solo vi Star Wars I una vez, pero me gusta mucho, o nunca he encontrado Star Wars I en el catálogo). Esto no pasa con los ratings, pues ratings bajos indican baja preferencia.
 
 - Sin embargo, estamos seguros de que niveles altos de interacción (oyó muchas veces una canción, etc.), es indicación de preferencia alta.
 
-- Así que en nuestro modelo no necesariamente queremos predecir directamente la variable $r_{ij}$: puede haber artículos con predicción baja de $r_{ij}$ que
-descubramos de todas formas van a ser altamente preferidos.
+- Usualmente la medida $r_{ij}$ **no** tiene faltantes, o tiene un valor implícito para faltantes. Por ejemplo, si la medida es % de la película que vi, todas las películas con las que no he interactuado tienen $r_{ij}=0$.
 
+Así que en nuestro modelo no necesariamente queremos predecir directamente la variable $r_{ij}$: puede haber artículos con predicción baja de $r_{ij}$ que
+descubramos de todas formas van a ser altamente preferidos. Un modelo que haga
+una predicción de $r_{îj}$ reflejaría más los patrones de consumo actual en lugar
+de permitirnos descubrir artículos preferidos con los que no necesariamente existe interacción.
+
+### Ejemplo
+
+Consideremos los siguientes usuarios, donde medimos por ejemplo el número de minutos
+que pasó cada usuario viendo cada película:
+
+```{r}
+imp <- tibble(usuario = 1:6,
+              StarWars1 = c(0, 0, 0, 150, 300, 250),
+              StarWars2 = c(5,  10, 0, 200, 220,180), 
+              StarWars3 = c(200, 250, 300, 0, 0, 0)) 
+imp
+```
+
+
+Quiséramos encontrar una manera de considerar los 0's como información más suave (es decir, alguien puede tener valores bajos de interacción con una película, pero esto no implica necesariamente que no sea preferida). Esto implica que es más importante ajustar
+los valores altos del indicador implícito de preferencia.
+
+---
 
 Una solución propuesta en [@recomendacion-implicita] (e implementada en 
 spark) es darle menos importancia al valor $r_{ij}$ en la construcción
-de los factores latentes. Para hacer esto, primero definimos
-la variable de preferencia
+de los factores latentes, especialmente si tiene valores bajos. 
+
+Para hacer esto, primero definimos la variable de preferencia
 
 $$p_{ij} = 
 \begin{cases}
@@ -1616,17 +1638,63 @@ L =  \sum_{(i,j)} c_{ij}(p_{ij}  - \sum_{l=1}^k u_{i,l}v_{j,l})^2
 (#eq:implicita)
 \end{equation}
 
-Nótese la diferencia con el caso explícito. En este caso, los valores
-de $c_{ij}$ (confianza) actúan como un pesos en el ajuste de
-los factores, indicando que valores altos de $r_{ij}$ son más informativos y
-deben contribuir más en el ajuste, sin descalificar que un
-artìculo con $r_{ij}$ bajo puede ser preferido. Adicionalmente, los valores
-para los cuales $p_{ij}=0$ son los que reciben el peso mínimo ($c_{ij}=1$).
+
+Nótese que cuando $c_ij$ es alta (porque $r_{i,j}$ es alta), para minimizar
+esta cantidad tenemos que hacer la predicción cercana a 1, pues el error
+se multiplica por $c_{ij}$. Sin embargo, cuando $r_{i,j}$ es bajo, no es tan
+importante ajustar esta información con precisión: si $p_{ij} = 1$, puede ser
+que $\sum_{l=1}^k u_{i,l}v_{j,l}$ sea muy bajo, y si $p_{ij}=0$, puede ser
+que $\sum_{l=1}^k u_{i,l}v_{j,l}$ sea cercano a 1 sin afectar tanto el error.
+
+### Ejemplo
+
+Veamos cómo se ven soluciones de un factor
+
+```{r}
+imp_mat <- imp %>% select(-usuario) %>% as.matrix
+error_explicito <- function(uv){
+  u <- matrix(uv[1:6], ncol = 1)
+  v <- matrix(uv[7:9], ncol = 1)
+  sum((imp_mat - u %*% t(v))^2)
+}
+error_implicito <- function(uv){
+  u <- matrix(uv[1:6], ncol = 1)
+  v <- matrix(uv[7:9], ncol = 1)
+  pref_mat <- as.numeric(imp_mat > 0) - u %*% t(v)
+  confianza <- 1 + 10 * imp_mat
+  sum(confianza * pref_mat^2 )
+}
+```
+
+Si intentamos ajustar los ratings impllícitos como si fueran explícitos, obtenemos
+los siguientes ajustados con un solo factor latente:
+
+```{r}
+uv_inicial <- runif(9)
+opt_exp <- optim(par = uv_inicial, error_explicito, method = "BFGS")
+opt_exp$par[7:9]
+t(t(opt_exp$par[1:6])) %*% t(opt_exp$par[7:9]) %>% round()
+```
+
+Nótese que esta solución no es muy buena: una componente intenta capturar
+los patrones de consumo de estas tres películas.
+
+Si usamos preferencias y confianza, obtenemos:
+
+```{r}
+opt_imp <- optim(par = uv_inicial, error_implicito, method = "BFGS")
+opt_imp$par[7:9]
+t(t(opt_imp$par[1:6])) %*% t(opt_imp$par[7:9]) %>% round(2)
+```
+
+que indica que la información en esta matriz es consistente con que todos
+los usuarios tienen preferencia alta por las tres películas.
+
+---
 
 Igual que en los ejemplos anteriores, usualmente se agregan términos
-de regularización para los vectores renglón $u_i$ y $v_j$. Como en
-el paper original, este problema se puede resolver usando mínimos cuadrados
-alternados.
+de regularización para los vectores renglón $u_i$ y $v_j$. 
+
 
 ### Evaluación para modelos implícitos
 
@@ -1644,7 +1712,9 @@ rank = \frac{\sum_{j} p_{ij}rank_{i,j}}{\sum_j p_{ij}}
 $$
 
 donde $rank_{ij}$ es el percentil del artículo $j$ en la lista ordenada
-de artículos. $rank_{ij}=0$ para el mejor artículo, y $rank_{ij}=1$ para el peor.
+de artículos. $rank_{ij}=0$ para el mejor artículo, y $rank_{ij}=1$ para el peor. Es 
+decir, obtenemos valores más bajos si observamos que los usuarios interactúan
+con artículos que están más arriba en el ranking.
 
 Esta suma es un promedio sobre los rankings del usuario con $p_{ij}=1$, 
 y **menores valores son mejores** (quiere decir que hubo alguna preferencia
@@ -1653,6 +1723,7 @@ por $r_{ij}$:
 $$
 rank = \frac{\sum_{j} r_{ij}rank_{i,j}}{\sum_j r_{ij}}
 $$
+
 que es lo mismo que la ecuación anterior pero ponderando por el interés mostrado
 en cada artículo con $p_{ij}=1$.
 

@@ -1,0 +1,237 @@
+---
+title: "Recomendación implícita"
+output: html_notebook
+---
+
+Datos de preferencia implícita de Lastfm, <http://ocelma.net/MusicRecommendationDataset/index.html>. Hay que poner estos datos en datos/lastfm-dataset-360K/
+
+
+## Limpieza de datos
+
+Arrancamos spark:
+
+```{r, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(sparklyr)
+config <- spark_config()
+config$`sparklyr.shell.driver-memory` <- "4G"
+config$`sparklyr.shell.executor-memory` <- "2G"
+config$`spark.env.SPARK_LOCAL_IP.local` <- "0.0.0.0"
+sc <- spark_connect(master = "local", config = config)
+spark_set_checkpoint_dir(sc, './checkpoint')
+```
+
+Leemos datos
+
+```{r}
+path <- '../../datos/lastfm-dataset-360K/usersha1-artmbid-artname-plays.tsv'
+lastfm_tbl <- spark_read_csv(sc, 
+    name = "last_fm", path = path, header = FALSE, infer_schema = FALSE,
+    columns = c("user_id" = "character", "artist_id" = "character", "name" = "character", 
+                "plays" = "integer"),
+    delim = "\t", quote="\"",  overwrite = TRUE)
+lastfm_tbl
+lastfm_tbl %>% tally()
+```
+
+
+
+Limpiamos algunos na's y vemos la distribución de número de *plays*
+
+```{r}
+lastfm_tbl <- lastfm_tbl %>% 
+  filter(!is.na(plays)) %>%
+  filter(!is.na(artist_id)) 
+resumen <- lastfm_tbl %>% summarise(p_1 = percentile_approx(plays, 0.01),
+              p_50 = percentile_approx(plays, 0.50),
+              p_99 = percentile_approx(plays, 0.99),
+              max = max(plays, na.rm = T), n = n()) %>% collect
+resumen
+```
+
+En la cola superior hay valores muy grandes (casi medio millón de veces para
+un usuario y una canción). Podemos filtrar estos valores atípicos. Probamos
+por ejemplo con 5000 veces para una canción y un usuario:
+
+```{r}
+lastfm_tbl %>% 
+  summarise(mayor_5000 = sum(as.integer(plays > 5000), na.rm = TRUE)) %>% collect
+lastfm_tbl <- lastfm_tbl %>% filter(plays <= 5000)
+```
+
+**Nota**: en estos casos, donde tenemos una cola fuertemente larga a la derecha,
+podemos usar también $c_{ij} = 1 + \alpha\log(1+r_{ij}/\epsilon)$, donde
+$\epsilon>0$ es chica (en el paper, por ejemplo, usan $\epsilon=10^{-8}$).
+
+Numeramos los usuarios y los artistas, filtramos artistas desconocidos:
+
+
+```{r}
+lastfm_tbl <- lastfm_tbl %>% 
+    ft_string_indexer("user_id", "user_num") %>% 
+    ft_string_indexer("artist_id", "artist_num")
+#Filtramos artista desconocido (buscar el id)
+desconocidos <- lastfm_tbl %>% 
+  filter(artist_id=='125ec42a-7229-4250-afc5-e057484327fe') %>% collect
+table(desconocidos$name)
+lastfm_tbl <- lastfm_tbl %>% 
+  filter(artist_id != '125ec42a-7229-4250-afc5-e057484327fe')
+```
+
+Y podemos ver los artistas más populares, escogiendo un numbre (puede haber
+variaciones en el nombre que se identifican con el mismo id) para
+cada id de artistas:
+
+```{r}
+artistas <- lastfm_tbl %>% 
+  group_by(artist_num, artist_id) %>%
+  summarise(total_plays = sum(plays, na.rm = TRUE), name = first_value(name)) %>%
+  arrange(desc(total_plays))
+artistas_df <- artistas %>% collect
+artistas_df 
+```
+
+
+```{r}
+lastfm_tbl <- lastfm_tbl %>% ungroup %>% select(-name) %>% 
+  left_join(artistas %>% select(artist_num, name)) %>%
+  group_by(user_id, artist_id, artist_num, user_num, name) %>%
+  summarise(plays = sum(plays, na.rm = TRUE))
+lastfm_tbl
+```
+
+
+## ALS para calificaciones implícitas
+
+
+
+```{r als-spark}
+modelo_imp <- ml_als(lastfm_tbl %>% select(user_num, artist_num, plays), 
+    rating_col = "plays", user_col = "user_num", item_col = "artist_num", 
+    rank = 10, reg_param = 0.01, alpha = 30,
+    implicit_prefs = TRUE, checkpoint_interval = 5, max_iter = 10)
+# Nota: checkpoint evita que la gráfica de cálculo
+# sea demasiado grande. Cada 5 iteraciones hace una
+# nueva gráfica con los resultados de la última iteración.
+```
+
+
+Estos son los factores de los artistas:
+
+```{r}
+modelo_imp$item_factors
+```
+
+Y los factores de los usuarios son:
+
+```{r}
+modelo_imp$user_factors
+```
+
+Podemos examinar predicciones para un usuario. Primero vemos qué escuchó este usuario:
+
+```{r}
+usuario_num <- 1128
+#usuario_num <- 1551
+usuario_plays_df <- lastfm_tbl %>% filter(user_num == usuario_num) %>% 
+  arrange(desc(plays)) %>% collect()
+usuario_plays_df %>% select(name, plays)
+```
+
+Ahora examinamos el ranking de las predicciones:
+
+```{r}
+# hacer predicción para todo
+usuario_df <- artistas_df %>% 
+  mutate(user_num = usuario_num) 
+usuario_tbl <- copy_to(sc, usuario_df, name ="usuario", overwrite = TRUE)
+usuario_tbl <- ml_predict(modelo_imp, usuario_tbl) %>% 
+  mutate(rank = percent_rank(prediction)) %>% 
+  arrange(desc(rank)) %>% 
+  select(name, total_plays, rank)
+usuario_tbl %>% filter(total_plays > 200000)
+```
+
+
+```{r}
+usuario_df <- usuario_tbl %>% collect()
+ranking_df <- usuario_df %>% 
+  left_join(usuario_plays_df %>% 
+  select(name, plays)) %>% 
+  mutate(plays = ifelse(is.na(plays), 0, 1))
+```
+
+Obtenemos el siguiente ranking de entrenamiento:
+
+```{r}
+ranking_df %>% summarise(error_rank = sum(plays * rank) / sum(plays))
+```
+
+Si escogiéramos el ranking al azar, obtenemos alrededor de 0.5:
+
+```{r}
+ranking_df %>% mutate(rank = runif(length(rank))) %>% summarise(error_rank = sum(plays * rank) / sum(plays))
+```
+
+## Examinando los factores
+
+Examinamos similitud en los factores que encontramos:
+
+```{r}
+artistas_factores <- modelo_imp$item_factors %>% 
+  select(id, features_1:features_10) %>% 
+  collect()
+```
+
+```{r}
+artistas_factores <- artistas_factores %>%
+  rename(artist_num = id) %>% 
+  left_join(artistas_df) %>% 
+  arrange(artist_num)
+artistas_factores
+```
+
+
+```{r}
+V <- artistas_factores %>% select(features_1:features_10) %>% as.matrix
+```
+
+
+
+
+
+
+
+
+
+
+Y ahora veamos cuáles artistas son similares según nuestros factores (haz
+algunas pruebas):
+
+```{r}
+# por ejemplo
+# 1 beatles
+# 63 Britney Spears
+# 3 red hot chili peppers
+# 5  metallica
+artist_num <- 3
+repr_artista <- V[artist_num + 1,]
+```
+
+```{r}
+# calculamos similitud coseno - primero normalizamos los vectores de cada
+# artista
+norma <- function(x) sqrt(sum(x^2)) 
+escala <- apply(V, 1, norma)
+V_norm <- t(scale(t(V), center = FALSE, scale = escala)) 
+# producto punto por el artista que escogimos:
+sim_coseno_artista <- V_norm %*% (repr_artista / norma(repr_artista))
+artistas_factores[["sim"]] <- sim_coseno_artista[,1]
+artistas_factores %>% arrange(desc(sim)) %>% 
+  filter(total_plays > 200000) %>% 
+  head(50) %>% select(name, sim, total_plays)
+```
+```{r}
+spark_disconnect(sc)
+```
+
