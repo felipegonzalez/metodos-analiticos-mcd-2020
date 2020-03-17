@@ -1,0 +1,145 @@
+---
+title: "Tarea 8: redes"
+output: html_notebook
+---
+
+### Datos
+
+Los datos son tomados de [Moviegalaxies - Social Networks in Movies](https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/T4HBA3). 
+La descripción básica de estos datos es:
+
+> Methods: We created a movie script parser and determined same-scene appereance of characters as a proxy of connectedness (each co-appeareance is measured > > as one degree unit per scene). 
+
+
+Para los siguientes ejercicios, usa una de las películas en la carpeta datos/movie-galaxies, o usa Gephi para seleccionar otra película, y después exportar en formato *graphml*. También puedes trabajar dentro de Gephi si quieres.
+
+### Ejemplo
+
+```{r}
+library(tidyverse)
+library(tidygraph)
+library(ggraph)
+theme_set(theme_minimal())
+```
+
+```{r}
+red_rj <- igraph::read_graph("../../datos/movie-galaxies/romeo-and-juliet.graphml", 
+  format = "graphml") %>% 
+  as_tbl_graph
+red_rj
+```
+
+Puedes extraer la tabla de nodos y de aristas como sigue:
+
+```{r}
+red_rj %>% activate(nodes)
+```
+
+
+**Pregunta 1** Explica qué información está disponible a nivel nodo y a nivel arista 
+
+
+### Centralidad de nodos
+
+Calclamos la centralidad de cada personaje según el número de conexiones que tiene en la gráfica,
+es decir, el grado de cada nodo.
+
+```{r}
+# nota: el grado lo calculamos ponderado por los pesos de las aristas (sin ponderación, 
+# cada arista aporta 1, con ponderación cada arista aporta su peso.)
+red_rj <- red_rj %>% activate(nodes) %>% 
+  mutate(central_grado = centrality_degree(weights = weight)) 
+resumen_central <- red_rj %>% as_tibble() %>% 
+  select(label, central_grado) %>% arrange(desc(central_grado))
+resumen_central
+```
+
+** Pregunta 2**: ¿Cuáles son los personajes más importantes en término de grado (número de conexiones)
+en la película que escogiste? ¿Cuáles son los menos importantes?
+
+Usaremos también el betweeness de los nodos, que mide que tan bien comunica un nodo a cualquier otro par de nodos: un nodo es importante en betweeness cuando pasan muchos caminos únicos a través de él.
+
+```{r}
+# nota: el grado lo calculamos ponderado por los pesos de las aristas (sin ponderación, 
+# cada arista aporta 1, con ponderación cada arista aporta su peso.)
+red_rj <- red_rj %>% activate(nodes) %>% 
+  mutate(central_between = centrality_betweenness(weights = weight)) 
+resumen_central <- red_rj %>% as_tibble() %>% select(label, central_grado, central_between) %>% 
+  arrange(desc(central_grado))
+resumen_central
+
+```
+
+```{r}
+library(ggrepel)
+ggplot(resumen_central, aes(x = central_grado + 1 , y = central_between + 1, label = label)) + 
+  geom_point() + geom_text_repel() +
+  scale_x_log10() + scale_y_log10()
+```
+
+
+
+**Pregunta 3** ¿Qué personajes de tu película son importantes en una medida de centralidad pero no tanto en la
+otra?
+
+
+### Visualización
+
+Empieza haciendo una gráfica simple:
+
+```{r}
+ggraph(red_rj, layout = "circle") + 
+    geom_edge_link(colour = "gray") + 
+    geom_node_point() +
+    geom_node_text(aes(label = label))
+```
+
+Ahora incluye tamaño y color en tu gráfica para los nodos. Puedes usar una medida 
+de centralidad:
+
+
+```{r}
+ggraph(red_rj, layout = "circle") + 
+    geom_edge_link(colour = "gray") + 
+    geom_node_point(aes(size = central_between, colour = central_between)) +
+    geom_node_text(aes(label = label), repel = TRUE)
+```
+
+Escoge un layout basado en fuerzas (puedes experimentar con *stress*, *fr*, *graphopt*, *gem*:
+
+```{r, fig.width = 10}
+ggraph(red_rj, layout = "fr") + 
+    geom_edge_link(colour = "gray") + 
+    geom_node_point(aes(size = central_between, colour = central_between)) +
+    geom_node_text(aes(label = label), size = 3, repel = TRUE)
+```
+
+
+Agrega ancho de las aristas dependiendo del peso:
+
+
+```{r, fig.width = 10}
+ggraph(red_rj, layout = "stress") + 
+    geom_edge_link(aes(edge_width = weight), alpha = 0.5, colour = "gray70") + 
+    geom_node_point(aes(size = central_between, colour = central_between)) +
+    geom_node_text(aes(label = label), size = 3, repel = TRUE)
+```
+
+Podemos usar el logaritmo de las medidas de centralidad para apreciar mejor variación:
+
+```{r, fig.width = 10}
+set.seed(8823)
+ggraph(red_rj, layout = "fr") + 
+    geom_edge_link(aes(edge_width = weight), alpha = 0.5, colour = "gray70") + 
+    geom_node_point(aes(size = central_between, colour = log(central_between))) +
+    geom_node_text(aes(label = label), size = 3, repel = TRUE)
+```
+
+
+**Pregunta 4**. ¿qué algoritmos de layout funcioron mejor para tu gráfica? ¿Por qué?
+
+**Pregunta 5**: en tu gráfica, ¿puedes explicar por qué algunos nodos son relativamente más importantes
+en una medida centralidad que en la otra?
+
+**Pregunta 6** ¿Pudiste aprender algo de la estructura de la película examinando estas
+representaciones?

@@ -1,0 +1,1023 @@
+<?xml version="1.0" encoding="UTF-8"?><graphml xmlns="http://graphml.graphdrawing.org/xmlns">
+<key attr.name="label" attr.type="string" for="node" id="label"/>
+<key attr.name="Edge Label" attr.type="string" for="edge" id="edgelabel"/>
+<key attr.name="weight" attr.type="double" for="edge" id="weight"/>
+<key attr.name="r" attr.type="int" for="node" id="r"/>
+<key attr.name="g" attr.type="int" for="node" id="g"/>
+<key attr.name="b" attr.type="int" for="node" id="b"/>
+<key attr.name="x" attr.type="float" for="node" id="x"/>
+<key attr.name="y" attr.type="float" for="node" id="y"/>
+<key attr.name="size" attr.type="float" for="node" id="size"/>
+<key attr.name="movie_id" attr.type="int" for="node" id="movie_id"/>
+<key attr.name="Eccentricity" attr.type="double" for="node" id="eccentricity"/>
+<key attr.name="Closeness Centrality" attr.type="double" for="node" id="closnesscentrality"/>
+<key attr.name="Betweenness Centrality" attr.type="double" for="node" id="betweenesscentrality"/>
+<key attr.name="Degree" attr.type="int" for="node" id="degree"/>
+<key attr.name="Component ID" attr.type="int" for="node" id="componentnumber"/>
+<key attr.name="Modularity Class" attr.type="int" for="node" id="modularity_class"/>
+<key attr.name="movie_id" attr.type="int" for="edge" id="movie_id"/>
+<graph edgedefault="undirected">
+<node id="4770051">
+<data key="label">VADER</data>
+<data key="movie_id">777</data>
+<data key="eccentricity">4.0</data>
+<data key="closnesscentrality">1.8333333333333333</data>
+<data key="betweenesscentrality">225.32142857142856</data>
+<data key="degree">12</data>
+<data key="componentnumber">0</data>
+<data key="modularity_class">3</data>
+<data key="size">100.0</data>
+<data key="r">255</data>
+<data key="g">220</data>
+<data key="b">101</data>
+<data key="x">-706.698</data>
+<data key="y">-19.465368</data>
+</node>
+<node id="4769112">
+<data key="label">LUKE</data>
+<data key="movie_id">777</data>
+<data key="eccentricity">4.0</data>
+<data key="closnesscentrality">1.8333333333333333</data>
+<data key="betweenesscentrality">223.47619047619045</data>
+<data key="degree">14</data>
+<data key="componentnumber">0</data>
+<data key="modularity_class">4</data>
+<data key="size">99.21382</data>
+<data key="r">169</data>
+<data key="g">208</data>
+<data key="b">253</data>
+<data key="x">929.67303</data>
+<data key="y">-113.83191</data>
+</node>
+<node id="4769357">
+<data key="label">THREEPIO</data>
+<data key="movie_id">777</data>
+<data key="eccentricity">3.0</data>
+<data key="closnesscentrality">1.75</data>
+<data key="betweenesscentrality">145.86904761904762</data>
+<data key="degree">15</data>
+<data key="componentnumber">0</data>
+<data key="modularity_class">0</data>
+<data key="size">66.14868</data>
+<data key="r">255</data>
+<data key="g">170</data>
+<data key="b">51</data>
+<data key="x">49.586803</data>
+<data key="y">272.6965</data>
+</node>
+<node id="4769119">
+<data key="label">HAN</data>
+<data key="movie_id">777</data>
+<data key="eccentricity">3.0</data>
+<data key="closnesscentrality">1.7777777777777777</data>
+<data key="betweenesscentrality">103.20238095238095</data>
+<data key="degree">14</data>
+<data key="componentnumber">0</data>
+<data key="modularity_class">0</data>
+<data key="size">47.970203</data>
+<data key="r">255</data>
+<data key="g">170</data>
+<data key="b">51</data>
+<data key="x">320.16357</data>
+<data key="y">281.60522</data>
+</node>
+<node id="4769205">
+<data key="label">RIEEKAN</data>
+<data key="movie_id">777</data>
+<data key="eccentricity">4.0</data>
+<data key="closnesscentrality">2.388888888888889</data>
+<data key="betweenesscentrality">99.0</data>
+<data key="degree">5</data>
+<data key="componentnumber">0</data>
+<data key="modularity_class">0</data>
+<data key="size">46.179745</data>
+<data key="r">255</data>
+<data key="g">170</data>
+<data key="b">51</data>
+<data key="x">582.35394</data>
+<data key="y">492.81027</data>
+</node>
+<node id="4769261">
+<data key="label">LEIA</data>
+<data key="movie_id">777</data>
+<data key="eccentricity">3.0</data>
+<data key="closnesscentrality">1.8055555555555556</data>
+<data key="betweenesscentrality">95.70238095238096</data>
+<data key="degree">13</data>
+<data key="componentnumber">0</data>
+<data key="modularity_class">0</data>
+<data key="size">44.77477</data>
+<data key="r">255</data>
+<data key="g">170</data>
+<data key="b">51</data>
+<data key="x">184.94783</data>
+<data key="y">531.6436</data>
+</node>
+<node id="4770175">
+<data key="label">CONTROLLER</data>
+<data key="movie_id">777</data>
+<data key="eccentricity">5.0</data>
+<data key="closnesscentrality">3.25</data>
+<data key="betweenesscentrality">69.0</data>
+<data key="degree">3</data>
+<data key="componentnumber">0</data>
+<data key="modularity_class">2</data>
+<data key="size">33.398003</data>
+<data key="r">95</data>
+<data key="g">202</data>
+<data key="b">190</data>
+<data key="x">327.98804</data>
+<data key="y">-1008.0514</data>
+</node>
+<node id="4772252">
+<data key="label">NEEDA</data>
+<data key="movie_id">777</data>
+<data key="eccentricity">5.0</data>
+<data key="closnesscentrality">2.6666666666666665</data>
+<data key="betweenesscentrality">68.0</data>
+<data key="degree">4</data>
+<data key="componentnumber">0</data>
+<data key="modularity_class">1</data>
+<data key="size">32.971947</data>
+<data key="r">255</data>
+<data key="g">102</data>
+<data key="b">0</data>
+<data key="x">-1834.4852</data>
+<data key="y">245.9054</data>
+</node>
+<node id="4770200">
+<data key="label">VEERS</data>
+<data key="movie_id">777</data>
+<data key="eccentricity">5.0</data>
+<data key="closnesscentrality">2.6944444444444446</data>
+<data key="betweenesscentrality">35.0</data>
+<data key="degree">4</data>
+<data key="componentnumber">0</data>
+<data key="modularity_class">3</data>
+<data key="size">18.91203</data>
+<data key="r">255</data>
+<data key="g">220</data>
+<data key="b">101</data>
+<data key="x">-1626.5493</data>
+<data key="y">-370.61472</data>
+</node>
+<node id="4770610">
+<data key="label">WEDGE</data>
+<data key="movie_id">777</data>
+<data key="eccentricity">5.0</data>
+<data key="closnesscentrality">2.75</data>
+<data key="betweenesscentrality">35.0</data>
+<data key="degree">2</data>
+<data key="componentnumber">0</data>
+<data key="modularity_class">4</data>
+<data key="size">18.91203</data>
+<data key="r">169</data>
+<data key="g">208</data>
+<data key="b">253</data>
+<data key="x">1145.0712</data>
+<data key="y">-625.2921</data>
+</node>
+<node id="4772901">
+<data key="label">BOBA FETT</data>
+<data key="movie_id">777</data>
+<data key="eccentricity">4.0</data>
+<data key="closnesscentrality">2.25</data>
+<data key="betweenesscentrality">9.095238095238095</data>
+<data key="degree">7</data>
+<data key="componentnumber">0</data>
+<data key="modularity_class">3</data>
+<data key="size">7.8750978</data>
+<data key="r">255</data>
+<data key="g">220</data>
+<data key="b">101</data>
+<data key="x">-601.9661</data>
+<data key="y">373.1998</data>
+</node>
+<node id="4769894">
+<data key="label">ANNOUNCER</data>
+<data key="movie_id">777</data>
+<data key="eccentricity">4.0</data>
+<data key="closnesscentrality">2.3333333333333335</data>
+<data key="betweenesscentrality">7.75</data>
+<data key="degree">5</data>
+<data key="componentnumber">0</data>
+<data key="modularity_class">4</data>
+<data key="size">7.3019505</data>
+<data key="r">169</data>
+<data key="g">208</data>
+<data key="b">253</data>
+<data key="x">667.33514</data>
+<data key="y">203.63405</data>
+</node>
+<node id="4770019">
+<data key="label">PIETT</data>
+<data key="movie_id">777</data>
+<data key="eccentricity">5.0</data>
+<data key="closnesscentrality">2.611111111111111</data>
+<data key="betweenesscentrality">7.5</data>
+<data key="degree">5</data>
+<data key="componentnumber">0</data>
+<data key="modularity_class">3</data>
+<data key="size">7.1954346</data>
+<data key="r">255</data>
+<data key="g">220</data>
+<data key="b">101</data>
+<data key="x">-1192.1624</data>
+<data key="y">-33.31121</data>
+</node>
+<node id="4769650">
+<data key="label">BEN</data>
+<data key="movie_id">777</data>
+<data key="eccentricity">4.0</data>
+<data key="closnesscentrality">2.4722222222222223</data>
+<data key="betweenesscentrality">5.333333333333333</data>
+<data key="degree">4</data>
+<data key="componentnumber">0</data>
+<data key="modularity_class">4</data>
+<data key="size">6.2723083</data>
+<data key="r">169</data>
+<data key="g">208</data>
+<data key="b">253</data>
+<data key="x">1454.8972</data>
+<data key="y">61.8318</data>
+</node>
+<node id="4773543">
+<data key="label">LANDO</data>
+<data key="movie_id">777</data>
+<data key="eccentricity">4.0</data>
+<data key="closnesscentrality">2.0555555555555554</data>
+<data key="betweenesscentrality">2.9166666666666674</data>
+<data key="degree">7</data>
+<data key="componentnumber">0</data>
+<data key="modularity_class">3</data>
+<data key="size">5.2426696</data>
+<data key="r">255</data>
+<data key="g">220</data>
+<data key="b">101</data>
+<data key="x">-193.4478</data>
+<data key="y">405.88077</data>
+</node>
+<node id="4769610">
+<data key="label">DERLIN</data>
+<data key="movie_id">777</data>
+<data key="eccentricity">4.0</data>
+<data key="closnesscentrality">2.611111111111111</data>
+<data key="betweenesscentrality">2.833333333333333</data>
+<data key="degree">4</data>
+<data key="componentnumber">0</data>
+<data key="modularity_class">0</data>
+<data key="size">5.2071657</data>
+<data key="r">255</data>
+<data key="g">170</data>
+<data key="b">51</data>
+<data key="x">-290.9085</data>
+<data key="y">1180.102</data>
+</node>
+<node id="4771904">
+<data key="label">CREATURE</data>
+<data key="movie_id">777</data>
+<data key="eccentricity">5.0</data>
+<data key="closnesscentrality">2.7222222222222223</data>
+<data key="betweenesscentrality">1.0</data>
+<data key="degree">4</data>
+<data key="componentnumber">0</data>
+<data key="modularity_class">4</data>
+<data key="size">4.426059</data>
+<data key="r">169</data>
+<data key="g">208</data>
+<data key="b">253</data>
+<data key="x">1641.7268</data>
+<data key="y">-257.14612</data>
+</node>
+<node id="4770343">
+<data key="label">CAPTAIN</data>
+<data key="movie_id">777</data>
+<data key="eccentricity">6.0</data>
+<data key="closnesscentrality">4.222222222222222</data>
+<data key="betweenesscentrality">0.0</data>
+<data key="degree">1</data>
+<data key="componentnumber">0</data>
+<data key="modularity_class">2</data>
+<data key="size">4.0</data>
+<data key="r">95</data>
+<data key="g">202</data>
+<data key="b">190</data>
+<data key="x">355.8085</data>
+<data key="y">-1411.7354</data>
+</node>
+<node id="4773040">
+<data key="label">COMMUNICATIONS OFFICER</data>
+<data key="movie_id">777</data>
+<data key="eccentricity">6.0</data>
+<data key="closnesscentrality">3.611111111111111</data>
+<data key="betweenesscentrality">0.0</data>
+<data key="degree">2</data>
+<data key="componentnumber">0</data>
+<data key="modularity_class">1</data>
+<data key="size">4.0</data>
+<data key="r">255</data>
+<data key="g">102</data>
+<data key="b">0</data>
+<data key="x">-2259.1982</data>
+<data key="y">536.4307</data>
+</node>
+<node id="4770383">
+<data key="label">DACK</data>
+<data key="movie_id">777</data>
+<data key="eccentricity">5.0</data>
+<data key="closnesscentrality">2.7777777777777777</data>
+<data key="betweenesscentrality">0.0</data>
+<data key="degree">2</data>
+<data key="componentnumber">0</data>
+<data key="modularity_class">4</data>
+<data key="size">4.0</data>
+<data key="r">169</data>
+<data key="g">208</data>
+<data key="b">253</data>
+<data key="x">957.9858</data>
+<data key="y">-407.0987</data>
+</node>
+<node id="4769440">
+<data key="label">DECK OFFICER</data>
+<data key="movie_id">777</data>
+<data key="eccentricity">4.0</data>
+<data key="closnesscentrality">2.638888888888889</data>
+<data key="betweenesscentrality">0.0</data>
+<data key="degree">2</data>
+<data key="componentnumber">0</data>
+<data key="modularity_class">0</data>
+<data key="size">4.0</data>
+<data key="r">255</data>
+<data key="g">170</data>
+<data key="b">51</data>
+<data key="x">330.6277</data>
+<data key="y">-350.5304</data>
+</node>
+<node id="4772308">
+<data key="label">EMPEROR</data>
+<data key="movie_id">777</data>
+<data key="eccentricity">5.0</data>
+<data key="closnesscentrality">2.8055555555555554</data>
+<data key="betweenesscentrality">0.0</data>
+<data key="degree">1</data>
+<data key="componentnumber">0</data>
+<data key="modularity_class">3</data>
+<data key="size">4.0</data>
+<data key="r">255</data>
+<data key="g">220</data>
+<data key="b">101</data>
+<data key="x">-953.41205</data>
+<data key="y">-600.32227</data>
+</node>
+<node id="4771329">
+<data key="label">IMPERIAL OFFICER</data>
+<data key="movie_id">777</data>
+<data key="eccentricity">4.0</data>
+<data key="closnesscentrality">2.2777777777777777</data>
+<data key="betweenesscentrality">0.0</data>
+<data key="degree">6</data>
+<data key="componentnumber">0</data>
+<data key="modularity_class">3</data>
+<data key="size">4.0</data>
+<data key="r">255</data>
+<data key="g">220</data>
+<data key="b">101</data>
+<data key="x">-393.08237</data>
+<data key="y">689.29</data>
+</node>
+<node id="4773448">
+<data key="label">INTERCOM VOICE</data>
+<data key="movie_id">777</data>
+<data key="eccentricity">4.0</data>
+<data key="closnesscentrality">2.5833333333333335</data>
+<data key="betweenesscentrality">0.0</data>
+<data key="degree">3</data>
+<data key="componentnumber">0</data>
+<data key="modularity_class">0</data>
+<data key="size">4.0</data>
+<data key="r">255</data>
+<data key="g">170</data>
+<data key="b">51</data>
+<data key="x">-68.41889</data>
+<data key="y">-116.46641</data>
+</node>
+<node id="4770669">
+<data key="label">JANSON</data>
+<data key="movie_id">777</data>
+<data key="eccentricity">6.0</data>
+<data key="closnesscentrality">3.7222222222222223</data>
+<data key="betweenesscentrality">0.0</data>
+<data key="degree">1</data>
+<data key="componentnumber">0</data>
+<data key="modularity_class">4</data>
+<data key="size">4.0</data>
+<data key="r">169</data>
+<data key="g">208</data>
+<data key="b">253</data>
+<data key="x">1250.7872</data>
+<data key="y">116.69633</data>
+</node>
+<node id="4769596">
+<data key="label">LIEUTENANT</data>
+<data key="movie_id">777</data>
+<data key="eccentricity">4.0</data>
+<data key="closnesscentrality">2.6666666666666665</data>
+<data key="betweenesscentrality">0.0</data>
+<data key="degree">2</data>
+<data key="componentnumber">0</data>
+<data key="modularity_class">0</data>
+<data key="size">4.0</data>
+<data key="r">255</data>
+<data key="g">170</data>
+<data key="b">51</data>
+<data key="x">-615.07733</data>
+<data key="y">1052.5176</data>
+</node>
+<node id="4773721">
+<data key="label">MAN</data>
+<data key="movie_id">777</data>
+<data key="eccentricity">4.0</data>
+<data key="closnesscentrality">2.7222222222222223</data>
+<data key="betweenesscentrality">0.0</data>
+<data key="degree">1</data>
+<data key="componentnumber">0</data>
+<data key="modularity_class">0</data>
+<data key="size">4.0</data>
+<data key="r">255</data>
+<data key="g">170</data>
+<data key="b">51</data>
+<data key="x">457.18384</data>
+<data key="y">1026.5737</data>
+</node>
+<node id="4770116">
+<data key="label">MEDICAL DROID</data>
+<data key="movie_id">777</data>
+<data key="eccentricity">5.0</data>
+<data key="closnesscentrality">2.8055555555555554</data>
+<data key="betweenesscentrality">0.0</data>
+<data key="degree">1</data>
+<data key="componentnumber">0</data>
+<data key="modularity_class">4</data>
+<data key="size">4.0</data>
+<data key="r">169</data>
+<data key="g">208</data>
+<data key="b">253</data>
+<data key="x">1042.4581</data>
+<data key="y">-868.62177</data>
+</node>
+<node id="4770022">
+<data key="label">OZZEL</data>
+<data key="movie_id">777</data>
+<data key="eccentricity">5.0</data>
+<data key="closnesscentrality">2.7222222222222223</data>
+<data key="betweenesscentrality">0.0</data>
+<data key="degree">3</data>
+<data key="componentnumber">0</data>
+<data key="modularity_class">3</data>
+<data key="size">4.0</data>
+<data key="r">255</data>
+<data key="g">220</data>
+<data key="b">101</data>
+<data key="x">-1325.7222</data>
+<data key="y">-409.2364</data>
+</node>
+<node id="4771003">
+<data key="label">PILOT</data>
+<data key="movie_id">777</data>
+<data key="eccentricity">6.0</data>
+<data key="closnesscentrality">3.6666666666666665</data>
+<data key="betweenesscentrality">0.0</data>
+<data key="degree">1</data>
+<data key="componentnumber">0</data>
+<data key="modularity_class">3</data>
+<data key="size">4.0</data>
+<data key="r">255</data>
+<data key="g">220</data>
+<data key="b">101</data>
+<data key="x">-2011.5159</data>
+<data key="y">-499.73618</data>
+</node>
+<node id="4770286">
+<data key="label">PILOTS</data>
+<data key="movie_id">777</data>
+<data key="eccentricity">4.0</data>
+<data key="closnesscentrality">2.7222222222222223</data>
+<data key="betweenesscentrality">0.0</data>
+<data key="degree">2</data>
+<data key="componentnumber">0</data>
+<data key="modularity_class">0</data>
+<data key="size">4.0</data>
+<data key="r">255</data>
+<data key="g">170</data>
+<data key="b">51</data>
+<data key="x">-92.185005</data>
+<data key="y">1401.4067</data>
+</node>
+<node id="4769923">
+<data key="label">SENIOR CONTROLLER</data>
+<data key="movie_id">777</data>
+<data key="eccentricity">4.0</data>
+<data key="closnesscentrality">2.4722222222222223</data>
+<data key="betweenesscentrality">0.0</data>
+<data key="degree">4</data>
+<data key="componentnumber">0</data>
+<data key="modularity_class">0</data>
+<data key="size">4.0</data>
+<data key="r">255</data>
+<data key="g">170</data>
+<data key="b">51</data>
+<data key="x">314.21896</data>
+<data key="y">-84.690994</data>
+</node>
+<node id="4771890">
+<data key="label">STRANGE VOICE</data>
+<data key="movie_id">777</data>
+<data key="eccentricity">5.0</data>
+<data key="closnesscentrality">2.7777777777777777</data>
+<data key="betweenesscentrality">0.0</data>
+<data key="degree">2</data>
+<data key="componentnumber">0</data>
+<data key="modularity_class">4</data>
+<data key="size">4.0</data>
+<data key="r">169</data>
+<data key="g">208</data>
+<data key="b">253</data>
+<data key="x">1870.9027</data>
+<data key="y">-94.29159</data>
+</node>
+<node id="4773027">
+<data key="label">TRACKING OFFICER</data>
+<data key="movie_id">777</data>
+<data key="eccentricity">6.0</data>
+<data key="closnesscentrality">3.611111111111111</data>
+<data key="betweenesscentrality">0.0</data>
+<data key="degree">2</data>
+<data key="componentnumber">0</data>
+<data key="modularity_class">1</data>
+<data key="size">4.0</data>
+<data key="r">255</data>
+<data key="g">102</data>
+<data key="b">0</data>
+<data key="x">-2324.7146</data>
+<data key="y">298.0264</data>
+</node>
+<node id="4770418">
+<data key="label">TRENCH OFFICER</data>
+<data key="movie_id">777</data>
+<data key="eccentricity">6.0</data>
+<data key="closnesscentrality">4.222222222222222</data>
+<data key="betweenesscentrality">0.0</data>
+<data key="degree">1</data>
+<data key="componentnumber">0</data>
+<data key="modularity_class">2</data>
+<data key="size">4.0</data>
+<data key="r">95</data>
+<data key="g">202</data>
+<data key="b">190</data>
+<data key="x">61.97952</data>
+<data key="y">-1301.0825</data>
+</node>
+<node id="4772431">
+<data key="label">YODA</data>
+<data key="movie_id">777</data>
+<data key="eccentricity">5.0</data>
+<data key="closnesscentrality">2.75</data>
+<data key="betweenesscentrality">0.0</data>
+<data key="degree">3</data>
+<data key="componentnumber">0</data>
+<data key="modularity_class">4</data>
+<data key="size">4.0</data>
+<data key="r">169</data>
+<data key="g">208</data>
+<data key="b">253</data>
+<data key="x">1331.0425</data>
+<data key="y">-188.12181</data>
+</node>
+<node id="4769751">
+<data key="label">ZEV</data>
+<data key="movie_id">777</data>
+<data key="eccentricity">4.0</data>
+<data key="closnesscentrality">2.5277777777777777</data>
+<data key="betweenesscentrality">0.0</data>
+<data key="degree">2</data>
+<data key="componentnumber">0</data>
+<data key="modularity_class">0</data>
+<data key="size">4.0</data>
+<data key="r">255</data>
+<data key="g">170</data>
+<data key="b">51</data>
+<data key="x">1212.8055</data>
+<data key="y">-410.604</data>
+</node>
+<edge id="315" source="4769894" target="4770383">
+<data key="edgelabel">170491</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="316" source="4769894" target="4769112">
+<data key="edgelabel">170492</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="317" source="4769650" target="4769119">
+<data key="edgelabel">170449</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="318" source="4772901" target="4771329">
+<data key="edgelabel">170643</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="319" source="4772901" target="4769261">
+<data key="edgelabel">170642</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="320" source="4772901" target="4770051">
+<data key="edgelabel">170641</data>
+<data key="weight">2.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="321" source="4770175" target="4770343">
+<data key="edgelabel">170490</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="322" source="4770175" target="4769205">
+<data key="edgelabel">170480</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="323" source="4771904" target="4769650">
+<data key="edgelabel">170554</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="324" source="4771904" target="4772431">
+<data key="edgelabel">170555</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="325" source="4769440" target="4769119">
+<data key="edgelabel">170444</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="326" source="4769119" target="4769894">
+<data key="edgelabel">170458</data>
+<data key="weight">2.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="327" source="4769119" target="4772901">
+<data key="edgelabel">170633</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="328" source="4769119" target="4771329">
+<data key="edgelabel">170636</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="329" source="4769119" target="4773448">
+<data key="edgelabel">170583</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="330" source="4769119" target="4773543">
+<data key="edgelabel">170599</data>
+<data key="weight">4.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="331" source="4769119" target="4769112">
+<data key="edgelabel">170456</data>
+<data key="weight">3.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="332" source="4769119" target="4769205">
+<data key="edgelabel">170473</data>
+<data key="weight">2.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="333" source="4769119" target="4770051">
+<data key="edgelabel">170634</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="334" source="4773448" target="4769261">
+<data key="edgelabel">170587</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="335" source="4773448" target="4769357">
+<data key="edgelabel">170586</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="336" source="4770669" target="4770610">
+<data key="edgelabel">170499</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="337" source="4773543" target="4772901">
+<data key="edgelabel">170617</data>
+<data key="weight">2.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="338" source="4773543" target="4771329">
+<data key="edgelabel">170640</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="339" source="4773543" target="4769112">
+<data key="edgelabel">170660</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="340" source="4773543" target="4770051">
+<data key="edgelabel">170616</data>
+<data key="weight">2.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="341" source="4769261" target="4769894">
+<data key="edgelabel">170461</data>
+<data key="weight">2.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="342" source="4769261" target="4769610">
+<data key="edgelabel">170488</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="343" source="4769261" target="4769119">
+<data key="edgelabel">170440</data>
+<data key="weight">22.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="344" source="4769261" target="4771329">
+<data key="edgelabel">170646</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="345" source="4769261" target="4773543">
+<data key="edgelabel">170608</data>
+<data key="weight">5.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="346" source="4769261" target="4770286">
+<data key="edgelabel">170487</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="347" source="4769261" target="4769205">
+<data key="edgelabel">170474</data>
+<data key="weight">3.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="348" source="4769261" target="4769357">
+<data key="edgelabel">170470</data>
+<data key="weight">12.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="349" source="4769596" target="4769610">
+<data key="edgelabel">170446</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="350" source="4769596" target="4769357">
+<data key="edgelabel">170445</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="351" source="4769112" target="4769650">
+<data key="edgelabel">170552</data>
+<data key="weight">2.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="352" source="4769112" target="4771904">
+<data key="edgelabel">170542</data>
+<data key="weight">2.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="353" source="4769112" target="4770383">
+<data key="edgelabel">170495</data>
+<data key="weight">2.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="354" source="4769112" target="4769261">
+<data key="edgelabel">170459</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="355" source="4769112" target="4771890">
+<data key="edgelabel">170541</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="356" source="4769112" target="4770610">
+<data key="edgelabel">170519</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="357" source="4770116" target="4769112">
+<data key="edgelabel">170478</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="358" source="4772252" target="4773040">
+<data key="edgelabel">170575</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="359" source="4772252" target="4770019">
+<data key="edgelabel">170548</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="360" source="4772252" target="4773027">
+<data key="edgelabel">170574</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="361" source="4772252" target="4770051">
+<data key="edgelabel">170547</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="362" source="4770022" target="4770019">
+<data key="edgelabel">170486</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="363" source="4770019" target="4772901">
+<data key="edgelabel">170569</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="364" source="4770286" target="4769610">
+<data key="edgelabel">170489</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="365" source="4769205" target="4769923">
+<data key="edgelabel">170462</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="366" source="4769205" target="4769357">
+<data key="edgelabel">170465</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="367" source="4769923" target="4769119">
+<data key="edgelabel">170467</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="368" source="4769923" target="4769261">
+<data key="edgelabel">170466</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="369" source="4769923" target="4769357">
+<data key="edgelabel">170468</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="370" source="4771890" target="4771904">
+<data key="edgelabel">170543</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="371" source="4769357" target="4769894">
+<data key="edgelabel">170455</data>
+<data key="weight">2.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="372" source="4769357" target="4772901">
+<data key="edgelabel">170628</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="373" source="4769357" target="4769440">
+<data key="edgelabel">170443</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="374" source="4769357" target="4769610">
+<data key="edgelabel">170447</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="375" source="4769357" target="4769119">
+<data key="edgelabel">170452</data>
+<data key="weight">18.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="376" source="4769357" target="4771329">
+<data key="edgelabel">170631</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="377" source="4769357" target="4773543">
+<data key="edgelabel">170621</data>
+<data key="weight">4.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="378" source="4769357" target="4769112">
+<data key="edgelabel">170453</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="379" source="4769357" target="4773721">
+<data key="edgelabel">170602</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="380" source="4769357" target="4770051">
+<data key="edgelabel">170629</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="381" source="4773027" target="4773040">
+<data key="edgelabel">170576</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="382" source="4770418" target="4770175">
+<data key="edgelabel">170494</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="383" source="4770051" target="4772308">
+<data key="edgelabel">170550</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="384" source="4770051" target="4771329">
+<data key="edgelabel">170645</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="385" source="4770051" target="4769261">
+<data key="edgelabel">170644</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="386" source="4770051" target="4769112">
+<data key="edgelabel">170650</data>
+<data key="weight">2.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="387" source="4770051" target="4770022">
+<data key="edgelabel">170482</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="388" source="4770051" target="4770019">
+<data key="edgelabel">170483</data>
+<data key="weight">4.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="389" source="4770051" target="4770200">
+<data key="edgelabel">170481</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="390" source="4770200" target="4770022">
+<data key="edgelabel">170484</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="391" source="4770200" target="4770019">
+<data key="edgelabel">170485</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="392" source="4770200" target="4771003">
+<data key="edgelabel">170510</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="393" source="4772431" target="4769650">
+<data key="edgelabel">170604</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="394" source="4772431" target="4769112">
+<data key="edgelabel">170567</data>
+<data key="weight">4.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="395" source="4769751" target="4769119">
+<data key="edgelabel">170451</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+<edge id="396" source="4769751" target="4769112">
+<data key="edgelabel">170502</data>
+<data key="weight">1.0</data>
+<data key="movie_id">777</data>
+</edge>
+</graph>
+</graphml>
