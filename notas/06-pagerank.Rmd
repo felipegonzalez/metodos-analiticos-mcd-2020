@@ -133,9 +133,9 @@ básico de estos algoritmos:
 
 ```{r}
 library(visNetwork)
-edges <- g %>% activate(edges) %>% as_data_frame
+edges <- g %>% activate(edges) %>% as_tibble
 set.seed(13)
-red_vis <- visNetwork(nodes = data_frame(id = 1:20, label = 1:20), 
+red_vis <- visNetwork(nodes = tibble(id = 1:20, label = 1:20), 
            edges, width = "100%") %>%
   visPhysics(solver ='forceAtlas2Based', 
              forceAtlas2Based = list(gravitationalConstant = - 50, # negativo!
