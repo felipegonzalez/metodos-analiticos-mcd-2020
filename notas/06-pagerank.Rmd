@@ -188,8 +188,8 @@ $$c_G(i)=\sum_{j\neq i} A_{i,j}.$$
 que cuenta cúantas aristas conectan con el nodo $i$.
 
 ```{r}
-graficar_red_nd <- function(dat_g){
-  ggraph(dat_g, layout = 'kk') +
+graficar_red_nd <- function(dat_g, layout = 'kk'){
+  ggraph(dat_g, layout = layout) +
   geom_edge_link(alpha=0.2) +
   geom_node_point(aes(size = importancia), colour = 'salmon') +
   geom_node_text(aes(label = nombre), nudge_y = 0.2, size=3) +
@@ -257,22 +257,23 @@ graficar_red_nd(red_4)
 ```
 
 
-### Medida de centralidad: *Betweeness*
+### Medida de centralidad: *Betweeness* o *Intermediación*
 
-La medida de centralidad *betweeness* de un nodo $i$ se define como:
+La medida de centralidad de *intermediación* de un nodo $u$ se define como:
 $$c_b (u) = \sum_{j<k, u\neq j,u\neq i} \frac{ g(j,k |u)}{ g(j,k)},$$
 donde
 
 - $g(j,k)$ es el número de caminos más cortos distintos entre $j$ y $k$ y 
-- $g(j,k |i)$ es el número de caminos más cortos distintos entre $j$ y $k$ que pasan por $i$. 
-- $g(j,k | i ) = 0$ cuando $j=i$ o $k=i$.
+- $g(j,k |u)$ es el número de caminos más cortos distintos entre $j$ y $k$ que pasan por $u$. 
+- $g(j,k | u ) = 0$ cuando $j=u$ o $k=u$.
 
-- Los caminos que más aportan al betweeness de un nodo $i$ son los que no tienen otra alternativa más que pasar por $i$.
+- Los caminos que más aportan a la intermediación de un nodo $u$ son aquellos que
+conectan nodos que no tienen otra alternativa más que pasar por $u$.
 
 Esta medida se puede normalizar poniendo ($n$ es el total de nodos de la red)
 $$\overline{c}_b (i)=c_b (i)/\binom{n-1}{2},$$
-pues el denominador es el máximo valor de betweeness que puede alcanzar un vértice
-en una red de $n$ nodos. 
+pues el denominador es el máximo valor de intermediación que puede alcanzar un vértice
+en una red de $n$ nodos (demuéstralo). 
 
 #### Ejemplo {-}
 
@@ -281,7 +282,7 @@ red_4 <- igraph::graph(c(2,1,3,1,4,1,5,1,2,3,6,2,2,5,1,6,6,7), directed = FALSE)
   as_tbl_graph() %>%
   mutate(importancia = centrality_betweenness()) %>%
   mutate(nombre  = LETTERS[1:7])
-graficar_red_nd(red_4) + labs(subtitle = 'Betweeness')
+graficar_red_nd(red_4) + labs(subtitle = 'Intermediación')
 ```
 
 Por ejemplo, consideremos el nodo $B$. Hay dos caminos más
@@ -297,10 +298,10 @@ restantes:
 red_4 %>% as_data_frame
 ```
 
-#### Ejemplo de grado y betweeness: Pulp Fiction {-}
+#### Ejemplo de grado e intermediación: Pulp Fiction {-}
 
 En esta red, el color es una medición de betweeness y el tamaño del nodo una medición del grado.
-Aunque Butch y Jules tienen grados similares, Butch tiene *betweeness* más alto
+Aunque Butch y Jules tienen grados similares, Butch tiene *intermediación* más alto
 pues provee más ligas únicas más cortas 
 entre los personajes, mientras que la mayoría de los de Jules
 pasan también por Vincent.
