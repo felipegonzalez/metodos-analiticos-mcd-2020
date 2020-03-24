@@ -353,10 +353,8 @@ graficar_red_nd(red_6) + theme(legend.position="none")+ labs(subtitle = 'Eigenve
 
 Supongamos que las importancias  de estos $5$ nodos son
 $$(x_1,\ldots, x_5)$$
-donde $x_i\geq 0$.  
-
-Por ejemplo, en una red con dos
-nodos conectados los dos nodos deben tener la misma importancia.
+donde $x_i\geq 0$. Suponemos también que estas importancias
+están normalizadas, de forma que $\sum_i x_i = 1$.
 
 De acuerdo a la idea mencionada arriba, calculamos entonces cómo se ve la suma de las importancias de nodos adyacentes a cada nodo. Para el nodo uno,
 
@@ -389,22 +387,21 @@ la matriz de adyacencia, como
 \]
 
 
-**Por definición de las importancias**, si normalizamos este vector $y$ debemos obtener las importancias originales:
+**Por definición de las importancias**, si normalizamos este vector $y$ debemos obtener las importancias originales. Es decir, existe una $\lambda$ tal que
 
 $$\frac{1}{\lambda}y = x$$
 
 Donde $\lambda\geq 0$ es el factor de normalización. En resumen, $x\geq 0$ debe satisfacer, para alguna $\lambda > 0$, la
 ecuación 
-$$y = A^t x = \lambda x,$$
+$$A^t x = \lambda x,$$
 
 es decir, $x$ **es un vector propio de la matriz de adyacencia con valor propio positivo.**
 
-Sin embargo, ¿cuando existe un vector $x\geq 0$ con $\lambda>0$ que satisfaga esta propiedad?
+Sin embargo, ¿cuando existe un vector $x\geq 0$ con $\lambda>0$ que satisfaga esta propiedad? ¿es único?
 
 #### Ejercicio {-}
 Resuelve el sistema de ecuaciones de arriba y verifica que tal vector existe.
 ¿Cuál es el valor de lambda?
-
 
 #### Matrices no negativas {-}
 
@@ -419,7 +416,7 @@ Si $A$ es una matriz no negativa,  entonces:
 
 - Existe un valor
 propio real *no-negativo* $\lambda_0$ tal que $\lambda_0\geq |\lambda|$ para cualquier otro valor propio $\lambda$ de $A$. 
-- Al valor propio $\lambda_0$ está asociado a uno (o varios) vector propio $x$ con entradas no negativas. 
+- Al valor propio $\lambda_0$ está asociado al menos un vector propio $x$ con entradas no negativas. 
 ```
 
 Nota: Parte de este teorema se puede entender observando que si $A$ es no-negativa, entonces
@@ -472,6 +469,11 @@ vectores propios no negativos:
 desc_A <- eigen(A_red)
 print(desc_A, digits = 2)
 ```
+
+**Nota**: si encontramos un vector propio $x$ con entradas negativas o cero,
+podemos convertirlo a un vector propio con entradas no negativas tomando $-x$. Los
+vectores propios debemos considerarlos *módulo* una constante multiplicativa, y 
+los vectores particulares que se encuentran dependen del algoritmo.
 
 En este caso, la medida de centralización dependería de qué
 peso le ponemos al primer vector propio vs el segundo vector propio. En este
@@ -573,5 +575,674 @@ ggraph(uk_tbl, layout = 'fr') +
   theme_graph(base_family = 'sans')
 ```
 
+
+
+
+## Gráficas dirigidas
+
+Estos conceptos pueden aplicarse también para gráficas dirigidas, cuando hay un concepto de dirección en las relaciones de los nodos.
+
+- In degree, out degree.
+- Betweenness puede definirse en función de caminos dirigidos.
+- Cercanía también (in closeness, out closeness).
+- Centralidad de eigenvector: misma idea, pero la matriz $A$ no es simétrica. En este caso, $A_{ij} = 1$ cuando hay una arista que va de $i$ a $j$.
+
+Consideremos en particular cómo se calcula la centralidad de eigenvector para una red dirigida.
+
+```{r fig.width=3, fig.asp=1, out.width="200px", out.height="200px"}
+set.seed(28011)
+red_6 <- igraph::erdos.renyi.game(5, p.or.m=0.5, directed=T)
+par(mar=c(0,0,0,0))
+plot(red_6, vertex.size=40)
+```
+
+Su matriz de adyacencia es no simétrica
+```{r}
+A <- igraph::get.adjacency(red_6)
+A
+```
+
+
+Para este ejemplo, las ecuaciones de importancia son como sigue. Para el nodo $1$,
+$$\lambda x_1 = x_2 + x_4 + x_5$$
+para el nodo 5, por ejemplo, es
+$$\lambda x_5 = x_1 + x_2 + x_3$$
+y así sucesivamente.
+
+Obsérvese que en cada ecuación se consideran las aristas *entrantes*, de forma que la ecuación del nodo $1$ requiere la columna $1$ de la matriz de adyacencia, el nodo $2$ la columna $2$, etc. Es decir, la ecuación que debemos resolver es
+
+$$A^t x = \lambda x$$
+
+En el ejemplo anterior,
+```{r}
+desc_A <- eigen(t(as.matrix(A)))
+v <- desc_A$vectors[,1]
+print(as.numeric(v / sum(v)), digits = 2)
+```
+
+
+¿Cuándo podemos garantizar unicidad en la solución de $A^tx=\lambda x$ con $\lambda > 0$?
+
+Sea $A$ la matriz de adyacencia de una gráfica dirigida. Igual que en el caso
+de gráficas no dirigidas:
+
+-  Si la gráfica asociada a $A$ es fuertemente conexa (para cualquier par de vértices hay caminos $i\to j$ y $j\to i$) entonces decimos que $A$ es **irreducible**.
+- Igualmente, $A$ es irreducible si y sólo si para cualquier $i,j$ existe una
+$m>0$ tal que $(A^m)_{i,j}>0$.
+
+Y podemos igualmente aplicar Perron-Frobenius, de donde concluimos: 
+
+
+```{block2 , type='resumen'}
+Si $A$ es irreducible, entonces $\lambda_0 > 0$ es un eigenvector simple de $A$, un vector propio asociado $x$ tiene entradas positivas, y no existe ningún otro vector propio con entradas no negativas que no sea paralelo a $x$.
+```
+
+
+Y entonces podemos definir una medida única de centralidad módulo una constante multiplicativa.
+
+
+### Ejemplos: ¿qué pasa si $A$ es no reducible? {-}
+
+Hay distintas maneras en que la matriz no es reducible, y cada una
+de ellas contradice algún aspecto del teorema de Perron Frobenius.
+
+Por ejemplo, si la gráfica es conexa pero no fuertemente conexa,
+podemos tener vectores propios no positivos (algunos nodos resultan
+con peso $0$):
+
+```{r fig.width=3, fig.asp=1, out.width="200px", out.height="200px"}
+red <- igraph::graph(c(1,2,2,3,3,4,4,3), directed = TRUE)
+par(mar=c(0,0,0,0)); plot(red, vertex.size = 40)
+A_red <- as.matrix(igraph::get.adjacency(red))
+A_red
+eigen(t(A_red))
+```
+
+Si la gráfica es disconexa, podemos tener valores propios no 
+simples con distintos
+vectores propios no negativos:
+
+```{r fig.width=3, fig.asp=1, out.width="200px", out.height="200px"}
+red <- igraph::graph(c(1,2,2,3,1,1,4,5,5,4), directed = TRUE)
+par(mar=c(0,0,0,0)); plot(red, vertex.size = 20)
+A_red <- as.matrix(igraph::get.adjacency(red))
+A_red
+eigen(t(A_red))
+```
+
+O ningún valor propio positivo:
+```{r fig.width=3, fig.asp=1, out.width="200px", out.height="200px"}
+red <- igraph::graph(c(1, 2, 2, 3), directed = TRUE)
+par(mar=c(0,0,0,0)); plot(red, vertex.size = 20)
+A_red <- as.matrix(igraph::get.adjacency(red))
+A_red
+print(eigen(t(A_red)), digits = 2)
+```
+
+
+
+## Pagerank
+
+Pagerank es una medida similar a la centralidad de eigenvector:
+
+- La importancia de una página (nodo) es un promedio ponderado de las importancias de otras páginas que apuntan (ligan) hacia ella. 
+- Diferencia: usamos **gráficas dirigidas**, y **distribuimos el peso de las aristas dependiendo
+de cuántas ligas hacia afuera tiene una página**: es decir, la importancia de una página se diluye entre el número de ligas a sus hijos.
+
+Esto tiene sentido pues si tenemos una página importante que apunta a pocas páginas,
+debe dar más importancia a estas pocas páginas que si apuntara a muchas páginas.
+
+Para una red dirigida de páginas de internet, definimos entonces su **matriz de transición** $M$
+como sigue:
+
+- $M_{ij} =1/k$ si la página $i$ tiene $k$ ligas hacia afuera, y una de ellas va a la página $j$
+- $M_{ij} = 0$ en otro caso.
+
+Intentaremos hacer algo similar a la centralidad de eigenvector, pero usando la matriz de transición en lugar de la matriz de adyacencia.
+
+### Ejemplo {-}
+
+```{r fig.width=3, fig.asp=1, out.width="200px", out.height="200px"}
+red_p <- igraph::graph(c(1,2,1,4,1,3,2,1,2,4,3,1,4,3,2,3))
+par(mar=c(0,0,0,0))
+plot(red_p, vertex.size=40, edge.curved=T, edge.arrow.size=0.5)
+```
+
+La matriz de adyacencia no necesariamente es simétrica, pues la gráfica es dirigida:
+
+```{r}
+A <- igraph::get.adjacency(red_p)
+A
+```
+
+
+Y calculamos la matriz M, que es la matriz $A$ con los renglones normalizados por
+su suma:
+```{r}
+M <- A / Matrix::rowSums(A)
+M
+```
+
+### La matriz $M$ es estocástica
+
+A la matriz $M$ le llamamos una **matriz estocástica**, pues cada uno
+de sus renglones son no negativos y suman $1$. Bajo este supuesto, es posible
+demostrar otra versión del teorema de Perron Frobenius:
+
+```{block2, type='resumen'}
+**Principio del Pagerank**
+
+Supongamos que $M$ es irreducible, que en el caso dirigido quiere decir que la red
+es *fuertemente conexa*: existe un camino *dirigido* entre cualquier par de vértices.
+
+- Entonces el valor propio de Perron-Frobenius (simple) para $M^t$  es $\lambda_0=1$, y el único vector
+propio no negativo (módulo longitud) es estrictamente positivo y asociado a $\lambda_0=1$.
+
+Esto implica que si $r$ es el vector de importancias según pagerank, entonces $r$ debe satisfacer 
+
+$$r_j = \sum_{i\to j}  \frac{r_i}{d_i}$$
+
+donde la suma es sobre las ligas de entrada a $j$, y $d_i$ es el grado de salida del nodo $i$ (dividimos la importancia de $r_i$ sobre todas sus aristas de salida). En forma matricial, esto se escribe como:
+$$M^tr = r.$$
+```
+
+
+#### Ejercicio {-}
+Escribe las ecuaciones de las dos formas mostradas arriba para la 
+red
+```{r}
+red_p 
+```
+
+
+
+#### Ejemplo: pagerank simple {-}
+```{r, fit.width=6}
+decomp <- eigen(t(as.matrix(M)))
+decomp
+vec_1 <- abs(as.numeric(decomp$vector[,1]))
+vec_1
+round(vec_1/sum(vec_1), 2)
+```
+
+```{r fig.width=3, fig.asp=1, out.width="200px", out.height="200px"}
+par(mar=c(0,0,0,0))
+plot(red_p, vertex.size=100*vec_1, 
+                          edge.curved=T, edge.arrow.size=0.5)
+```
+
+¿Por qué $1$ tiene mayor importancia que $3$? Nótese que el nodo $3$ tiene mayor grado que $1$. La razón de
+que el pagerank de $1$ es mayor que el de $3$ es que la importancia
+del nodo $1$ se diluye pues tiene grado $3$ de salida, mientras
+que toda la importancia de $3$ se comunica al nodo $1$.
+
+
+### Primeras dificultades
+
+¿Qué puede fallar cuando queremos encontrar el pagerank de un gráfica
+que representa sitios de internet, por ejemplo? 
+ 
+- Si existen **callejones sin salida** la matriz $M$ no es estocástica, pues tiene un renglón de ceros - no podemos aplicar la teoría de arriba. Por ejemplo, la siguiente matriz no tiene un valor propio igual a $1$ (conclusión invalidada: hay un valor propio igual a $1$):
+
+```{r fig.width=3, fig.asp=1, out.width="200px", out.height="200px"}
+red_p <- igraph::graph(c(1,2,2,1,1,3))
+par(mar=c(0,0,0,0)); plot(red_p, vertex.size=30, edge.curved=T,edge.arrow.size=0.5)
+A <- igraph::get.adjacency(red_p)
+M <- t(scale(t(as.matrix(A)), center=FALSE, scale=apply(A,1,sum)))
+# ponemos cero porque ni siquiera se puede normalizar:
+M[3, ]  <- 0
+eigen(t(M))
+```
+
+- Si existen **trampas de telaraña** (spider traps) entonces la matriz $M$ es estocástica, pero las soluciones concentran toda la importancia en la trampa (en este caso consiste de los nodos $1$ y $2$) (conclusión invalidada: el vector de importancias 
+asociado al eigenvalor $1$ es positivo).
+
+```{r fig.width=3, fig.asp=1, out.width="200px", out.height="200px"}
+red_p <- igraph::graph(c(1,2,2,1,3,1,3,4,4,5,5,3))
+par(mar=c(0,0,0,0)); plot(red_p, vertex.size=30, edge.curved=T,edge.arrow.size=0.5)
+A <- igraph::get.adjacency(red_p)
+M <- t(scale(t(as.matrix(A)), center = FALSE, scale = apply(A,1,sum)))
+eigen(t(M))
+```
+
+- La red puede ser **disconexa**.  Por ejemplo, cuando hay dos componentes irreducibles, existe más de un vector propio asociado al valor propio $1$ (conclusión invalidada: la solución es única y el valor propio $1$ es simple), así que hay tantas soluciones como combinaciones lineales de los eigenvectores que aparecen:
+
+```{r fig.width=3, fig.asp=1, out.width="200px", out.height="200px"}
+red_p <- igraph::graph(c(1,2,2,3,3,1,4,5,5,6,6,5,6,4))
+par(mar=c(0,0,0,0)); plot(red_p, vertex.size=30,
+                          edge.curved=T,edge.arrow.size=0.5)
+A <- igraph::get.adjacency(red_p) %>% as.matrix
+M <- t(scale(t(A), center=FALSE, scale=apply(A,1,sum)))
+M
+sol <- eigen(t(M))
+sol
+round(sol$values,2)
+vec <- sol$vectors[,abs(sol$values-1) < 1e-8]
+Re(vec)
+```
+
+
+En términos de nuestra solución para dar importancia de páginas:
+
+- No es razonable que nuestra solución concentre toda la importancia en spider traps.
+- Si la gráfica es disconexa no podemos dar importancia relativa a las componentes resultantes.
+- Si hay callejones sin salida entonces nuestra formulación no sirve.
+
+---
+
+
+Para encontrar una solución, podemos pensar en el proceso estocástico asociado a esta formulación de pagerank.
+
+### El proceso estocástico (cadena de Markov) asociado al Pagerank, versión simple
+
+Podemos interpretar este proceso mediante una cadena de Markov. 
+Consideramos una persona que navega al azar en nuestra red (haciendo click
+en las ligas disponibles en cada nodo):
+
+- Comienza en una página tomada al azar (equiprobable).
+- Cada vez que llega a una página, escoge al azar alguna de las páginas ligadas en su página actual y navega hacia ella.
+- **Suponemos por el momento que no hay callejones sin salida** (estos evitan que pueda saltar a otro lado).
+
+La pregunta que queremos contestar: **¿cuál es la probabilidad que en distintos
+momentos el navegador aleatorio se encuentre en una página dada?** Claramente
+páginas que tienen muchas ligas de entrada (son importantes) tendrán más visitas, y más aún
+si estas ligas de entrada provienen de nodos con muchas ligas de entrada (es decir,
+a su vez son importantes).  Sin embargo, es necesario hacer algunos refinamientos
+si queremos contestar de manera simple esta pregunta.
+
+
+Denotamos por $X_1, X_2,\ldots$ la posición del navegador en cada momento del tiempo. Cada $X_i$ es una variable aleatoria que toma valores en los nodos $\{1,2,\ldots,n\}$.
+
+
+- $X_1, X_2,\ldots$ es un proceso estocástico discreto en tiempo discreto.
+- Para determinar un proceso estocástico, debemos dar la distribución
+conjunta de cualquier subconjunto $X_{s_1},X_{s_2},\ldots, X_{s_k}$ de variables. En este
+caso, la posición en $s+1$ sólo depende de la posición en el momento $s$, de forma
+que basta con especificar
+$$P(X_{s+1}=j\vert X_s=i) = P_{ij}, $$
+para cada par de páginas $i$ y $j$. 
+
+### Matriz de transición
+
+Ahora podemos ver que 
+
+- Si hay una liga de $i$ a $j$, entonces $P_{ij}=1/k(i)$, donde $k(i)$ es el número
+de ligas salientes de $i$.
+- Si no  hay liga de $i$ a $j$, entonces $P_{ij}=0$.
+
+Es claro que $P$ es igual a la matriz $M$ que definimos con anterioridad. 
+
+
+### Distribución de equilibrio (versión simple)
+
+La matriz $P$ es estocástica. Si suponemos que $P$ es irreducible (la gráfica es fuertemente conexa), entonces por la teoría que vimos arriba
+existe un vector $\pi > 0$ tal que $P^t\pi = \pi$.
+
+Ahora podemos interpretar este vector en términos del navegador aleatorio:
+
+- En términos del modelo del navegador aleatorio, ¿ qué
+significa entonces que un vector $\pi$ satisfaga $P^t \pi = \pi$, con $\pi \geq 0$?
+
+Suponemos $\pi$ normalizado por la suma: $\sum_i \pi_i=1$.
+
+- Significa que si escogemos un estado al azar con probabilidad $\pi$, entonces, después de un salto, las probabilidades de encontrar al navegador en cada estado está dado también por $\pi$. 
+- Igualmente, la probabilidad de encontrar al navegador en cualquier momento en el estado $i$ es igual a $\pi_i$.
+- Por esta razón, a $\pi$ se le llama una **distribución de equilibro** para
+el proceso del navegador aleatorio.
+
+### Distribución de equilibrio y probabilidades a largo plazo
+
+Sin embargo, en un principio no conocemos la distribución de
+equilibrio $\pi$. Lo que haríamos sería escoger un nodo al azar y comenzar
+a navegar desde ahí, o quizá empezaríamos en un nodo fijo, por ejemplo, el $1$, y
+nuestra pregunta sigue siendo **¿cuál es la probabilidad que en distintos
+momentos el navegador aleatorio se encuentre en una página dada?**
+
+En primer lugar, solamente con el supuesto de conexidad fuerte (irreducibilidad) 
+no podemos contestar esta pregunta de manera simple. Esto es porque si 
+no existe conexidad, entonces claramente los lugares donde podemos
+encontrar al navegador depende de dónde empezó, y la respuesta es compleja. Veremos
+que además, necesitamos un supuesto de aperiodicidad. 
+
+Requerimos entonces:
+
+- Conexidad fuerte (irreducibilidad)
+- Aperiodicidad
+
+Veremos ahora por qué la periodicidad puede ser un problema.
+
+#### Ejemplo: periodicidad {-}
+
+Consideremos este ejemplo fuertemente conexo (irreducible), con un ciclo de
+tamaño $3$:
+
+```{r fig.width=3, fig.asp=1, out.width="200px", out.height="200px"}
+red_p <- igraph::graph(c(1,2,2,3,3,1))
+par(mar=c(0,0,0,0)); plot(red_p, vertex.size=30, edge.curved=T,edge.arrow.size=0.5)
+A <- igraph::get.adjacency(red_p)
+M <- t(scale(t(as.matrix(A)), center=FALSE, scale=apply(A,1,sum)))
+M
+```
+
+Y notamos que si comenzamos en el estado uno, la probabilidad de estar en cada estado al tiempo $2$ es
+```{r}
+t(M) %*% c(1,0,0)
+```
+En el tiempo $3$:
+```{r}
+t(M) %*% t(M) %*% c(1,0,0)
+```
+En el tiempo $3$:
+```{r}
+t(M) %*% t(M) %*% t(M) %*% c(1,0,0)
+```
+y así sucesivamente, de manera que las probabilidades de visita a cada nodo dependen 
+siempre fuertemente del tiempo. La solución a nuestra pregunta de dónde
+estará el navegador aleatorio al tiempo $t$ no es tan simple de
+formular.
+
+En este ejemplo, vemos que el problema son estructuras periódicas
+en la red del navegador aleatorio. Veremos ahora cómo lidiar
+con este problema.
+
+
+### Matriz de transición a $k$ pasos
+
+Recordamos que la matriz $(P)^k$ da las probabilidades de transición
+a $k$ pasos. 
+
+Por ejemplo, para $k=2$ tenemos la probabiildad de pasar de $i$ a $j$ en dos pasos es igual a (probabilidad total):
+
+$$P(X_3=j|X_1=i) =\sum_k P(X_3=j|X_2=k, X_1=i) P(X_2=k|X_1=i)$$
+
+Por la propiedad de Markov, podemos simplificar
+
+$$P(X_3=j|X_1=i) =\sum_k P(X_3=j|X_2=k) P(X_2=k|X_1=i)$$
+
+y si sustituimos $P$
+
+$$P(X_3=j|X_1=i) =\sum_k P_{i,k} P_{k,j}. $$
+
+Como el lado derecho es la componente $i,j$ de $P^2$, tenemos que
+$P^2$ da las probabilidades de transición en $2$ pasos.
+
+Como ejercicio, calcula e interpreta $P^2$ para el ejemplo anterior.
+
+```{block2, type='resumen'}
+**Cadenas aperiódicas**
+  
+Decimos que $P$ irreducible es aperiódica cuando
+$P^{k_0}>0$ para alguna $k_0$ suficientemente grande.
+```
+
+Nótese que en el ejemplo anterior $P$ no es aperiódica. Con esta condición (no importa en qué estado estamos al tiempo $k_0$ el navegador puede estar en cualquier estado), podemos dar una respuesta más simple a la pregunta acerca de las probabilidades de largo plazo de la cadena:
+
+```{block2, type='resumen'}
+**Distribución a largo plazo**
+  
+Si $P$ es una matriz irreducible y aperiódica, y $\pi$ es su distribución de equilibrio, entonces 
+$$\lim_{n\to \infty} P(X_n=i) = \pi_i,$$
+independientemente de la distribución inicial.
+```
+
+
+Se puede demostrar ahora que, independiente de la distribución inicial,
+la distribución de equilibrio es $\pi$:
+
+Sea $v$ una distribución inicial sobre los estados (cualquiera). Entonces, 
+si $P$ es irreducible y aperiódica,
+$$(P^n)^t v \to \pi$$
+cuando $n\to \infty$.
+
+Lo cual nos da el algoritmo básico para encontrar la importancia de Pagerank dada por la distribución de equilibrio:
+
+```{block2, type='resumen'}
+**Método de potencias para pagerank simple**
+  
+Tomamos $v$ una distribución arbitraria (por ejemplo equidistribuida sobre los estados). Ponemos $v_1=v$ e iteramos
+$$v_{n+1} = M^t v_{n}$$
+hasta que $||v_{n+1} -v_{n}||<\epsilon.$
+```
+
+Veremos que este algoritmo simple es escalable a problemas muy grandes, pues
+sólo involucra multiplicar por una matriz que típicamente es rala.
+
+### Pagerank: teletransportación/perturbación de la matriz $M$
+
+Para que funcione este algoritmo, como vimos antes, tenemos
+que lidiar con los problemas que vimos arriba (spider traps, callejones sin salidas, falta de conexidad, periodicidad). 
+
+La solución es relativamente simple: fijamos una $\alpha$ cercana a uno. A cada tiempo:
+
+- Con probabilidad $\alpha$, el navegador escoge alguno de las ligas de salida y brinca (como en el proceso original),
+- Sin embargo, con probabilidad $1-\alpha$, el navegador se teletransporta
+a un nodo escogido al azar (equiprobable), de **todos** los nodos posibles.
+- Si el navegador está en un callejón sin salida, siempre se teletransporta como en el inciso anterior.
+
+Esta alteración del proceso elimina spider traps, callejones sin salidas, disconexiones y periodicidad.
+
+Ahora construimos la matriz $M_1$ de este proceso. Sea $M$ la matriz original, que suponemos por el momento no tiene callejones sin salida.
+
+¿Cómo se ven las nuevas probabildades de transición? Si $i,j$ son nodos, $n$ es el número total de nodos, tenemos simplemente (si $i$ no es spider-trap):
+
+$$(M_1)_{i,j} = \alpha M_{ij} + (1-\alpha)\frac{1}{n}$$
+
+Esto es por probabilidad total: la probabilidad de ir de $i$ a $j$ **dada** teletransportación es $1/n$, y la probabilidad de ir de $i$ a $j$ **dado** que no hubo teletransportación es $M_{ij}$ (que puede ser cero). La probabilidad total se calcula promediando estas dos probabilidades según la probabilidad de teletransportación o no.
+
+Si $i$ es un spider-trap, entonces ponemos simplemente 
+$$(M_1)_{i,j} = 1/n$$
+
+
+- Idea: La matriz $M_1$ estocástica es positiva, de modo que automáticamente
+es irreducible y aperiódica.
+
+Tomando $\alpha=0.85$ obtenemos por ejemplo para nuestra matriz $M$ anterior:
+
+```{r}
+red.p <- igraph::graph(c(1,2,2,3,3,1,2,3,3,2,4,5,5,4))
+par(mar=c(0,0,0,0)); plot(red.p, vertex.size=30, edge.curved=T,edge.arrow.size=0.5)
+A <- igraph::get.adjacency(red.p)
+M <- t(scale(t(as.matrix(A)), center=FALSE, scale=apply(A,1,sum)))
+unos <- rep(1,nrow(M))
+alpha <- 0.85
+M.1 <- alpha*M + (1-alpha)*unos%*%t(unos)/nrow(M)
+M.1
+```
+
+
+
+```{r}
+sol <- eigen(t(M.1))
+sol$values
+as.numeric(sol$vectors[,1])
+```
+
+#### Ejercicio {-}
+Verifica que la matriz $M_1$ construida arriba es en realidad una matriz estocástica.
+
+---
+
+No es buena idea preprocesar desde el principio la matriz $M$ para evitar estos casos (la matriz $M$ es típicamente rala, pues hay relativamente pocas ligas en cada página comparado con el total de nodos, y no queremos llenar los renglones igual a cero con 
+una cantidad fija). En lugar de eso, podemos hacer los siguiente:
+
+Supongamos entonces que queremos calcular $x' = M_1 x$, tomando en cuenta callejones sin salida. Podemos hacer, para $x$ distribución inicial:
+
+- Calcular $y = \alpha M^t x$ (operación con matriz rala).
+- Nótese que los renglones de $M$ que son iguales a cero deben ser sustituidos por $1/N$ (callejones sin salida). Esto
+implica que necesitamos sumar la misma cantidad a todas las entradas de $y$:
+$$\frac{1}{N}\sum_{j\,es\, callejon} x_j$$.
+
+- Por otra parte, para los que no son callejones, tenemos que sumar la cantidad fija
+$$(1-\alpha)\frac{1}{N}\sum_{j\, no\, es\, callejon} x_j$$
+- En cualquier caso, a todas las entradas se les suma una cantidad fija
+$$\frac{1}{N}\sum_{j\,es\, callejon} x_j + (1-\alpha)\frac{1}{N}\sum_{j\, no\, es\, callejon} x_j,$$
+y las componentes del vector resultante deben sumar uno.
+- La estrategia de cálculo es entonces: una vez que tenemos $y$, simplemente ajustamos $x= y + (1-S)/N$, donde
+$S=\sum_i y_i$, es decir: sumamos una cantidad fija para asegurar que suman uno las componentes de $x$.
+
+
+
+### Pagerank para buscador
+
+
+- Usamos índice invertido (términos a documentos) para escoger las páginas que son relevantes al query.
+- Regresamos los resultados ordenados por el PageRank.
+
+Consideramos las páginas de un solo sitio (universidad de Hollings):
+
+```{r, message=FALSE}
+library(Matrix)
+library(dplyr)
+tab_1 <- read.table('../datos/data_hollings/hollins.txt')
+write.csv(tab_1, file='../datos/data_hollings/ejemplo_red_hollings.csv', row.names=FALSE)
+head(tab_1)
+i <- tab_1$V1
+j <- tab_1$V2
+x <- 1
+```
+
+Normalizamos y usamos estructura rala:
+```{r}
+mat <- data.frame(i=i, j=j, x=x)
+mat_norm <- mat %>% group_by(i) %>%
+  mutate(p = x / sum(x))
+M <-sparseMatrix(i = mat_norm$i,
+                 j = mat_norm$j,
+                 x = mat_norm$p, 
+                 dims = c(6012,6012))
+dim(M)
+sum(M>0)/6012^2
+```
+
+
+Nótese que hacer los cálculos con la matriz rala es más eficiente:
+
+```{r}
+library(microbenchmark)
+r <- rep(1, 6012)/6012
+M_t <- t(M)
+microbenchmark(r_1 <- M_t %*% r, times=10, unit = 'ms')
+MM <- as.matrix(M_t)
+microbenchmark(r_1 <- MM %*% r, times=10, unit = 'ms')
+```
+
+
+Así que podemos hacer nuestro algoritmo:
+
+```{r, fig.width=3, fig.height=3}
+r <- rep(1, 6012)/6012
+
+for(i in 1:10){
+  q <- 0.85 * (M_t %*% r)
+  suma_q <- sum(q)
+  r_nuevo <- q + (1 - suma_q) / 6012
+  print(sum(abs(r_nuevo - r)))
+  r <- r_nuevo
+}
+```
+
+
+```{r}
+nombres.pag <- read.table('../datos/data_hollings/nombres_paginas.txt')
+nombres.pag$pagerank <- as.numeric(r)
+arrange(nombres.pag, desc(pagerank))  %>% head(10)
+#write.csv(nombres.pag[,c('Label'),drop=FALSE], file='pagerank_hollings.csv', row.names=FALSE, col.names=FALSE)
+ordenada <- arrange(nombres.pag, desc(pagerank))
+```
+
+
+Hacemos una búsqueda (simple, basada solamente en el nombre de la URL: esto normalmente
+se haría con un índice invertido sobre el contenido):
+
+```{r}
+query <- 'admission'
+ordenada %>% filter(str_detect(V2, 'admission')) %>% head
+ordenada %>% filter(str_detect(V2, 'admission')) %>% tail
+query <- 'hollins'
+ordenada %>% filter(str_detect(V2, query)) %>% head
+query <- 'student'
+ordenada %>% filter(str_detect(V2, query)) %>% head(10)
+```
+
+
+## Pagerank en spark
+
+Podemos usar con el paquete graphframes, que nos permite usar
+[GraphX](https://spark.apache.org/graphx/), la interfaz de Spark para
+hacer cálculo en redes de forma paralela.
+
+**Nota**: graphframes no funciona todavía con Spark 2.4.0. Para esta
+corrida usamos spark 2.3.0:
+
+```{r, warning = FALSE}
+library(sparklyr)
+sparklyr::spark_install(version = "2.3.0")
+library(graphframes)
+sc <- spark_connect(master = "local", version = "2.3.0")
+```
+
+Copiamos las tablas a spark, creamos un dataframe con los 
+vértices y otro con las aristas:
+
+```{r}
+hollins_tbl <- copy_to(sc, 
+    tab_1 %>% rename(from = V1, to = V2), "hollins", overwrite = TRUE)
+vertices_tbl <- sdf_bind_rows(
+  hollins_tbl %>% distinct(from) %>% rename(id = from),
+  hollins_tbl %>% distinct(to) %>% rename(id = to)
+) %>% distinct()
+aristas_tbl <- hollins_tbl %>% rename(src = from, dst = to)
+```
+
+Convertimos a un objeto de spark GraphFrame y aplicamos
+pagerank:
+
+```{r}
+hollings_pagerank <- gf_graphframe(vertices_tbl, aristas_tbl) %>%
+  gf_pagerank(reset_prob = 0.15, max_iter = 10L)
+```
+
+Finalmente extraemos los resultados y los recolectamos en R:
+
+```{r}
+vertices_pr <- hollings_pagerank$vertices %>% collect()
+arrange(vertices_pr, desc(pagerank)) 
+spark_disconnect(sc)
+```
+
+
+```{r}
+vertices_pr <- vertices_pr %>% 
+  mutate(pagerank = pagerank/sum(pagerank)) %>%
+  arrange(desc(pagerank))
+vertices_pr
+```
+
+Esta gráfica es grande y es más difícil de visualizar de forma
+provechosa. Puedes empezar intentando:
+
+```{r}
+graph <- tab_1 %>%
+  as_tbl_graph()
+graph <- graph %>% activate(nodes) %>%
+  left_join(vertices_pr %>% mutate(name = as.character(id)))
+  
+```
+
+```{r, eval = FALSE}
+ggraph(graph, layout = 'graphopt', charge = 0.001, 
+       spring.constant = 1, niter =  200) +
+  geom_edge_link(alpha=0.2) +
+  geom_node_point(aes(size = pagerank, alpha = pagerank), colour = 'salmon') +
+  theme_graph(base_family = 'sans')
+```
+
+Y también podemos usar Gephi. En este caso, exportamos
+la gráfica a gml (un formato estándar para gráficas), y podemos importarla en Gephi.
+
+```{r}
+graph_1 <- igraph::as.igraph(graph)
+igraph::write_graph(graph_1, file = 'hollings.gml', format = 'gml')
+```
 
 

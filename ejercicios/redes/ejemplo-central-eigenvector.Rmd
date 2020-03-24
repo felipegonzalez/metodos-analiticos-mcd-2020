@@ -1,0 +1,107 @@
+---
+title: "Ejemplo - centralidad de eigenvector"
+output: html_notebook
+---
+
+Definir una red
+
+```{r, fig.height=3}
+library(tidyverse)
+library(ggraph)
+library(tidygraph)
+red_6 <- igraph::graph(c(1,2,1,3,1,4,5,2), directed = FALSE) %>%
+  as_tbl_graph() %>% mutate(nombre = 1:5, importancia = 0)
+```
+
+Matriz de adyacencia
+
+```{r fig.width=3, fig.asp=1, out.width="200px", out.height="200px"}
+par(mar=c(0,0,0,0))
+plot(red_6, vertex.size = 40)
+A_red <- igraph::get.adjacency(red_6) %>% as.matrix
+A_red
+```
+
+
+## Calculo de importancias de eigenvector
+
+Tomamos un vector arbitrario primero
+
+```{r fig.width=3, fig.asp=1, out.width="200px", out.height="200px"}
+# "importancias"
+#x_norm <- c(0.307, 0.236, 0.165, 0.165, 0.127)
+x_norm <- c(0.3, 0.3, 0.1, 0.1 ,0.2)
+sum(x_norm)
+```
+
+
+Ahora recalculamos a mano importancias según la definición: 
+
+**la importancia (normalizada) de
+un nodo es la suma de las importancias de los nodos adyacentes**:
+
+
+```{r fig.width=3, fig.asp=1, out.width="200px", out.height="200px"}
+print("Calculo de suma de importancias")
+y <- c(0, 0, 0, 0, 0)
+y[1] <- x_norm[2] + x_norm[3] + x_norm[4]
+y[2] <- x_norm[1] + x_norm[5]
+y[3] <- x_norm[1]
+y[4] <- x_norm[1]
+y[5] <- x_norm[2]
+y_norm <- y / sum(y)
+y_norm
+```
+
+Y este vector $y_norm$ no es igual al $x_norm$ inicial. Así que no
+puede ser las importancias de eigenvector como definimos arriba.
+
+También podemos calcular de forma matricial:
+
+```{r}
+y <- A_red %*% x_norm
+y_norm <- as.numeric(y) / sum(y)
+y_norm
+```
+
+que da lo mismo que el cálculo a mano (¿por qué esto es cierto?).
+Es el mismo cálculo. Conviene **pensarlo y hacerlo en forma matricial**.
+
+
+Ahora vamos a escoger un vector especial (veremos más adelante cómo encontrarlo)
+```{r}
+x_norm_2 <- c(0.307, 0.236, 0.165, 0.165, 0.127)
+x_norm_2
+y_2 <- A_red %*% x_norm_2
+y_norm_2 <- as.numeric(y_2) / sum(y_2)
+y_norm_2 %>% round(3)
+```
+
+y nos da prácticamente el mismo vector. Así que este vector x_norm_2 podemos
+considerarlo como las importancias de eigenvector, según la definición
+**la importancia (escalada) de
+un nodo es la suma de las importancias de los nodos adyacentes**
+
+## ¿Cómo encontramos el vector de importancias**
+
+Si calculamos la descomposición espectral de la matriz de
+adyacencia (encontrar todas las $x$ tales que $A^tx = \lambda x$ para alguna $\lambda$):
+
+```{r}
+descomp <- eigen(t(A_red))
+descomp
+```
+
+Observamos que si tomamos el vector propio asociado al valor propio más grande, 
+
+```{r}
+v <- descomp$vectors[,1]
+v_norm <- v / sum(v)
+v_norm %>% round(3)
+```
+
+vemos que **recuperamos el vector de importancias**. Asi es como
+encontramos este vector de importancias. Revisa las notas para
+ver qué debe cumplir la gráfica para que esto sea cierto.
+
+
