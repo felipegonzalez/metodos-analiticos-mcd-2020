@@ -1,0 +1,235 @@
+# Detección de comunidades
+
+En esta parte consideramos algunos métodos de detección de comunidades, como una
+introducción a este tema amplio e importante.
+
+Las redes sociales y otras comunmente tienen subgrupos de vértices o nodos
+tales que hay una gran cantidad de conexiones entre ellos y menos conexiones
+fuera de ese grupo, o *comunidades* que es posible identificar. Existen distintas
+definiciones y algoritmos útiles para hacer análisis de comunidades: algunas particionan
+los nodos en clusters (como algoritmos de clustering), algunos otros permiten
+identificar comunidades traslapadas.
+
+Por ejemplo: en nuestra red personal de facebook o algo similar existen comunidades como
+familia, amigos de la secundaria o preparatoria, compañeros de trabajo, etc, y quizá
+algunos conocidos que no pertenecen a ninguna de estas comunidades. Naturalmente pertenecemos
+a todos estos grupos. Por otro lado, quizá si analizamos la red de retweets de un tema particular,
+podemos encontrar comunidades separadas (muchos retweets entre ellos, pocos retweets fuera del grupo)
+y cada persona se puede clasificar como de un "equipo".
+
+
+#### Ejemplo: red de club de karate
+
+De la descripción en *igraphdata* de estos datos:
+
+Social network between members of a university karate club, led by president John A. and karate instructor Mr. Hi (pseudonyms). The edge weights are the number of common activities the club members took part of. Zachary studied conflict and fission in this network, as the karate club was split into two separate clubs, after long disputes between two factions of the club, one led by **John A.**, the other by **Mr. Hi**.
+
+Hacemos cálculos y graficamos:
+
+```{r, message = FALSE}
+library(tidyverse)
+library(tidygraph)
+library(ggraph)
+library(igraphdata)
+data(karate)
+karate_red <- karate %>% as_tbl_graph() %>% 
+  activate(nodes) %>% 
+  mutate(grado = centrality_eigen()) %>% 
+  mutate(grupo = group_fast_greedy(weights = weight)) %>% 
+  mutate(grupo = as.factor(grupo)) %>% 
+  mutate(name = ifelse(str_detect(name, "Actor"), str_sub(name, 7, 10), name))
+```
+
+
+
+```{r}
+ggraph(karate_red, layout = 'fr') +
+  geom_edge_link(aes(alpha = weight)) +
+  geom_node_point(aes(size = grado, colour = grupo)) +
+  geom_node_text(aes(label = name), repel = TRUE) +
+  theme_graph()
+```
+
+Este método identifica dos comunidades grandes, la de Mr Hi, la de John A, y otra más chica
+que está conectada solamente a la de Mr Hi. Nótese que las ligas entre elementos de la comunidad
+son densas dentro de la comunidad y menos densas hacia afuera, aunque hay unos individuos que están
+en las fronteras (como 3 y 9, por ejemplo).
+
+¿Cómo encontrar estos módulos?
+
+## Modularidad
+
+El concepto de modularidad es uno básico para intentar cuantificar qué tan buean o "cohesiva" es una 
+separación de nodos en grupos.
+
+```{block2, type='comentario'}
+La **modularidad** mide que tan fuertemente puede dividirse una red en módulos (grupos, clusters o comunidades disjuntas).  Una división en módulos es fuerte cuando los nodos de cada módulo están bien conectados entre ellos, y menos conectados a nodos fuera de su módulo.
+```
+
+Para definir esta cantidad, comenzamos con la matriz de adyacencia $A$ de una
+gráfica **no dirigida**, y una agrupación de vértices en grupos.
+
+Para empezar, notamos que el número total de aristas en la gráfica es
+
+$$m = \frac{1}{2}\sum_{u,v} A_{u,v},$$
+
+donde dividimos entre dos para no contar doble las aristas no dirigidas.
+
+Ahora sea $g(v)$ el grupo al que pertenece el vértice $v$. Calculamos **el número de aristas
+de aristas conectan elementos del mismo grupo**:
+
+$$\frac{1}{2}\sum_{u,v} A_{u, v} I(g(u), g(v))$$
+
+nótese que un elemento de esta suma es igual a 0 o 1, y solo es igual a 1 cuando $u$ y $v$ están
+conectados y $u$ y $v$ pertenecen al mismo grupo ($I(g,h)$ es la función indicadora de identidad, es decir
+vale 1 si $g=h$ y 0 en otro caso).
+
+Entonces la fracción de aristas del total de aristas que conecta vértices dentro del mismo grupo es
+
+$$\frac{\sum_{u,v} A_{u, v} I(g(u), g(v))}{\sum_{u,v} A_{u, v}} = \frac{1}{2m}\sum_{u,v} A_{u, v} I(g(u), g(v))$$
+
+donde $m$ es el número de aristas. Esta cantidad va a ser grande para particiones "cohesivas", que agrupan vértices en comunidades densas y chica en otro caso.
+
+#### Ejemplo {-}
+
+```{r}
+#funcion para graficar
+graficar_red_nd <- function(dat_g, layout = "nicely", grupo){
+  ggraph(dat_g %>% activate(nodes), layout = layout) +
+  geom_edge_link(alpha=0.2) +
+  geom_node_point(aes(colour = {{ grupo }}), size = 5) +
+  geom_node_text(aes(label = nombre), size=5, repel = TRUE) +
+  theme_graph(base_family = "sans")
+}
+aristas <- tibble(from = c(10, 10, 10, 10, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 11),
+                  to = c(7, 8, 9, 1, 2, 3, 1, 5, 6, 4, 9, 7, 8, 5, 7))
+grupos <- c(rep('a', 3), rep('b', 3), rep('c', 5))
+ejemplo_mod_alta <- tbl_graph(
+  nodes = tibble(nombre = seq(1, 11, 1), 
+                 grupo = grupos), 
+  edges = aristas, directed = FALSE)
+set.seed(89)
+graficar_red_nd(ejemplo_mod_alta, layout = "gem", grupo = grupo)
+```
+
+Cuya matriz de adyacencia $A$ es 
+
+```{r}
+A <- igraph::get.adjacency(ejemplo_mod_alta)
+A
+```
+
+Nótense los bloques que se puede formar en la matriz de adyacencia (que es notable
+debido a cómo etiquetamos los nodos). Estas son las estructuras propias de una partición
+con modularidad alta. 
+
+
+
+
+Podemos calcular la fracción de aristas que conectan vértices del mismo grupo como sigue:
+
+```{r}
+g_a <- A[grupos == "a", grupos == "a"]
+g_a
+g_b <- A[grupos == "b", grupos == "b"]
+g_c <- A[grupos == "c", grupos == "c"]
+frac_1 <- (sum(g_a) + sum(g_b) + sum(g_c)) / sum(A)
+sprintf("Fracción de aristas dentro de mismo grupo: %0.3f", frac_1)
+```
+
+Para una gráfica con modularidad baja:
+
+
+Ahora vemos un ejemplo de modularidad baja:
+
+```{r}
+set.seed(12138)
+ejemplo_mod_baja <- play_erdos_renyi(11, p = 0.4, directed = FALSE) %>% 
+  activate(nodes) %>% 
+  mutate(grupo = grupos, nombre = 1:11)
+graficar_red_nd(ejemplo_mod_baja, layout = "gem", grupo = grupo)
+```
+
+
+```{r}
+A <- igraph::get.adjacency(ejemplo_mod_baja)
+g_a <- A[grupos == "a", grupos == "a"]
+g_b <- A[grupos == "b", grupos == "b"]
+g_c <- A[grupos == "c", grupos == "c"]
+g_c
+frac_2 <- (sum(g_a) + sum(g_b) + sum(g_c)) / sum(A)
+sprintf("Fracción de aristas dentro de mismo grupo: %0.3f", frac_2)
+```
+
+---
+
+**Discusión**: esta medida (fracción de aristas que conectan nodos en el mismo grupo) es una
+que podemos optimizar para buscar comunidades. Sin embargo, la modularidad no se define así,
+sino que consideramos una normalización adicional para hacerla más comparable de red a red.
+Nótese que:
+
+- Redes con más aristas tenderán a tener fracciones que conectan nodos en el mismo grupo **más altas**,  
+pues son más densas, independientemente de la agrupación.
+- Si existen nodos con grado alto (muchas aristas), estos nodos tenderán a tener contribución **más alta** a esta
+fracción pues conectan muchos nodos, independientemente de la agrupación.
+
+Una manera de normalizar es entonces considerar la modularidad comparada con lo que esperaríamos
+si, dejando fijo número de aristas y grados de vértices, las aristas se conectaran al azar con otros
+nodos.
+
+
+Una manera de hacer esto es considerar la fracción de aristas que conectarían nodos del mismo 
+grupo **si las aristas se conectaran al azar en la gráfica, respetando el grado de
+cada vértice**. Consideremos entonces dos aristas
+$u$ y $v$, que tienen grado $k(u)$ y $k(v)$ respectivamente, y sea $m$ el número total de aristas. Entonces 
+
+- Una arista dada de $u$ tiene probabilidad $k(v)/m$ de quedar conectada a $v$.
+- Esto se repite $k(u)$ veces de manera independiente
+- El valor esperado del número de conexiones entre $u$ y $v$ es entonces $k(u)k(v)/m$.
+
+Corregimos entonces nuestra fórmula de la siguiente forma
+
+```{block2, type='comentario'}
+La modularidad de una gráfica no dirigida y vértices con una agrupación dada $g$ se define como
+$$Q = \frac{1}{2m}{\sum_{u,v} \left ( A_{u, v} - \frac{k(u)k(v)}{m} \right )I(g(u), g(v))},$$
+donde $A$ es la matriz de adyacencia y $k(u)$ es el grado de $u$. 
+```
+
+**Observaciones**:
+
+1. Esta cantidad puede ir de -1 a 1. Normalmente se consideran valores mayores a 0.3 como
+casos de modularidad fuerte, o de existencia de comunidades (ver @mmds).
+2. La modularidad puede entenderse entonces como sigue: es la fracción de aristas que conectan nodos
+del mismo grupo menos lo que esperaríamos si las aristas se distribuyeran al azar en la gráfica
+(respetando el grado de cada vértice).
+
+
+#### Ejemplo {-}
+
+Para nuestro primer ejemplo la modularidad es
+
+```{r}
+igraph::modularity(ejemplo_mod_alta, as.factor(grupos))
+```
+
+y para nuestro segundo ejemplo
+
+```{r}
+igraph::modularity(ejemplo_mod_baja, as.factor(grupos))
+```
+
+## Algoritmo miope (fast greedy)
+
+Hay varios algoritmos para encontrar agrupaciones de modularidad alta en una gráfica dada. 
+Consideramos primero el algoritmo *fast greedy* (@fastgreedy, [liga de arxiv](https://arxiv.org/abs/cond-mat/0408187)), que está diseñado para redes
+posiblemente muy grandes. 
+
+Este algoritmo es similar a clustering jerárquico:
+
+1. Comenzamos con todos los vértices un su propia comunidad.
+2. Buscamos el par de comunidades (al principio vértices) que da el mayor incremento (o menor decremento) en $Q$.
+3. Repetimos 2 hasta que todos los puntos están en una sola comunidad.
+4. Escogemos el número de comunidades que maximiza el valor del $Q$ sobre todas las iteraciones.
+
+
+
