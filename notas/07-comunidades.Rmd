@@ -18,7 +18,7 @@ podemos encontrar comunidades separadas (muchos retweets entre ellos, pocos retw
 y cada persona se puede clasificar como de un "equipo".
 
 
-#### Ejemplo: red de club de karate
+#### Ejemplo: red de club de karate {-}
 
 De la descripción en *igraphdata* de estos datos:
 
@@ -59,7 +59,7 @@ en las fronteras (como 3 y 9, por ejemplo).
 
 ## Modularidad
 
-El concepto de modularidad es uno básico para intentar cuantificar qué tan buean o "cohesiva" es una 
+El concepto de modularidad es uno básico para intentar cuantificar qué tan buena o "cohesiva" es una 
 separación de nodos en grupos.
 
 ```{block2, type='comentario'}
@@ -88,18 +88,23 @@ Entonces la fracción de aristas del total de aristas que conecta vértices dent
 
 $$\frac{\sum_{u,v} A_{u, v} I(g(u), g(v))}{\sum_{u,v} A_{u, v}} = \frac{1}{2m}\sum_{u,v} A_{u, v} I(g(u), g(v))$$
 
-donde $m$ es el número de aristas. Esta cantidad va a ser grande para particiones "cohesivas", que agrupan vértices en comunidades densas y chica en otro caso.
+donde $m$ es el número de aristas. Esta cantidad va a ser grande para particiones "cohesivas", que agrupan vértices en comunidades densas y chica en otro caso. En general, esta formulación también aplica
+a *multigrafos*, en cuyo caso puede $A_{u,v}$ cuenta el número de aristas entre los nodos $u$ y $v$, y no
+solo vale 1 o 0.
 
 #### Ejemplo {-}
 
 ```{r}
 #funcion para graficar
-graficar_red_nd <- function(dat_g, layout = "nicely", grupo){
-  ggraph(dat_g %>% activate(nodes), layout = layout) +
-  geom_edge_link(alpha=0.2) +
-  geom_node_point(aes(colour = {{ grupo }}), size = 5) +
-  geom_node_text(aes(label = nombre), size=5, repel = TRUE) +
-  theme_graph(base_family = "sans")
+graficar_red_nd <- function(dat_g, layout = "nicely", grupo, nombres = TRUE){
+  gg <- ggraph(dat_g %>% activate(nodes), layout = layout) +
+    geom_edge_link(alpha=0.2) +
+    geom_node_point(aes(colour = {{ grupo }}), size = 5) +
+    theme_graph(base_family = "sans")
+  if(nombres){
+    gg <- gg + geom_node_text(aes(label = nombre), size=5, repel = TRUE)
+  }
+  gg
 }
 aristas <- tibble(from = c(10, 10, 10, 10, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 11),
                   to = c(7, 8, 9, 1, 2, 3, 1, 5, 6, 4, 9, 7, 8, 5, 7))
@@ -137,9 +142,6 @@ frac_1 <- (sum(g_a) + sum(g_b) + sum(g_c)) / sum(A)
 sprintf("Fracción de aristas dentro de mismo grupo: %0.3f", frac_1)
 ```
 
-Para una gráfica con modularidad baja:
-
-
 Ahora vemos un ejemplo de modularidad baja:
 
 ```{r}
@@ -168,41 +170,52 @@ que podemos optimizar para buscar comunidades. Sin embargo, la modularidad no se
 sino que consideramos una normalización adicional para hacerla más comparable de red a red.
 Nótese que:
 
-- Redes con más aristas tenderán a tener fracciones que conectan nodos en el mismo grupo **más altas**,  
-pues son más densas, independientemente de la agrupación.
-- Si existen nodos con grado alto (muchas aristas), estos nodos tenderán a tener contribución **más alta** a esta
-fracción pues conectan muchos nodos, independientemente de la agrupación.
+- Redes con nodos con grados más altos naturalmente tienden a tener calificaciones de modularidad más
+altas que redes con menos aristas.
 
 Una manera de normalizar es entonces considerar la modularidad comparada con lo que esperaríamos
-si, dejando fijo número de aristas y grados de vértices, las aristas se conectaran al azar con otros
-nodos.
+si, dejando fijo número de aristas y grados de vértices, las aristas se conectaran al azar. El 
+proceso aleatorio es:
 
+- Cortamos "a la mitad" todos las aristas de nuestra gráfica. Ahora conectamos
+mitades al azar. 
+- Calculamos la fracción de aristas que conectan nodos del mismo grupo.
 
-Una manera de hacer esto es considerar la fracción de aristas que conectarían nodos del mismo 
-grupo **si las aristas se conectaran al azar en la gráfica, respetando el grado de
-cada vértice**. Consideremos entonces dos aristas
-$u$ y $v$, que tienen grado $k(u)$ y $k(v)$ respectivamente, y sea $m$ el número total de aristas. Entonces 
+Y calculamos el valor esperado de esta cantidad, que restamos de la fracción que obtuvimos para
+la red original. El resultado es la **modularidad** de nuestra red: la diferencia de fracción de nodos
+que conectan al mismo grupo menos lo que pasaría si conectáramos al azar las aristas.
 
-- Una arista dada de $u$ tiene probabilidad $k(v)/m$ de quedar conectada a $v$.
-- Esto se repite $k(u)$ veces de manera independiente
-- El valor esperado del número de conexiones entre $u$ y $v$ es entonces $k(u)k(v)/m$.
+Ahora podemos calcular directamente este valor esperado. Consideremos entonces dos aristas
+$u$ y $v$, que tienen grado $k(u)$ y $k(v)$ respectivamente, y sea $m$ el número total de aristas. Entonces: 
 
-Corregimos entonces nuestra fórmula de la siguiente forma
+- Una media arista dada de $u$ tiene probabilidad $k(v)/(2m - 1)$ de quedar conectada a $v$.
+- El número de pruebas independientes es $k(u)$, para cada media arista de $u$.
+- El valor esperado del número de conexiones entre $u$ y $v$ es entonces $k(u)k(v)/(2m -1)$.
+
+La idea es entonces promediar los valores del número de conexiones observadas menos las esperadas
+según el modelo aleatorio:
+
+$$A_{u,v} - \frac{k(u)k(v)}{2m-1}$$
+
+para obtener:
 
 ```{block2, type='comentario'}
-La modularidad de una gráfica no dirigida y vértices con una agrupación dada $g$ se define como
-$$Q = \frac{1}{2m}{\sum_{u,v} \left ( A_{u, v} - \frac{k(u)k(v)}{m} \right )I(g(u), g(v))},$$
+La **modularidad** de una gráfica no dirigida y vértices con una agrupación dada $g$ se define como
+$$Q = \frac{1}{2m}{\sum_{u,v} \left ( A_{u, v} - \frac{k(u)k(v)}{2m} \right )I(g(u), g(v))},$$
 donde $A$ es la matriz de adyacencia y $k(u)$ es el grado de $u$. 
 ```
 
 **Observaciones**:
 
-1. Esta cantidad puede ir de -1 a 1. Normalmente se consideran valores mayores a 0.3 como
-casos de modularidad fuerte, o de existencia de comunidades (ver @mmds).
-2. La modularidad puede entenderse entonces como sigue: es la fracción de aristas que conectan nodos
+1. Típicamente se usa la división entre $2m$ en lugar de $2m-1$. Para gráficas no muy chicas esto
+no es muy importante.
+2. Si esta cantidad es cercana a cero, entonces la fracción de nodos intra-grupo es similar
+a la de una gráfica construida al azar.
+3. Esta cantidad puede ir de -0.5 a 1. Normalmente se consideran valores mayores a 0.3 como
+casos de modularidad fuerte, o de existencia de comunidades (ver @mmd).
+4. La modularidad puede entenderse entonces como sigue: es la fracción de aristas que conectan nodos
 del mismo grupo menos lo que esperaríamos si las aristas se distribuyeran al azar en la gráfica
 (respetando el grado de cada vértice).
-
 
 #### Ejemplo {-}
 
@@ -218,18 +231,105 @@ y para nuestro segundo ejemplo
 igraph::modularity(ejemplo_mod_baja, as.factor(grupos))
 ```
 
+---
+
+**Observación**: la idea ahora es construir algoritmos para encontrar agrupaciones de modularidad
+máxima en una gráfica dada. Estas agrupaciones nos dan las comunidades si resultan tener modularidad
+alta.
+
 ## Algoritmo miope (fast greedy)
 
 Hay varios algoritmos para encontrar agrupaciones de modularidad alta en una gráfica dada. 
-Consideramos primero el algoritmo *fast greedy* (@fastgreedy, [liga de arxiv](https://arxiv.org/abs/cond-mat/0408187)), que está diseñado para redes
+Consideramos el algoritmo *fast greedy* (@fastgreedy, [liga de arxiv](https://arxiv.org/abs/cond-mat/0408187)), que está diseñado para redes
 posiblemente muy grandes. 
 
 Este algoritmo es similar a clustering jerárquico:
 
 1. Comenzamos con todos los vértices un su propia comunidad.
-2. Buscamos el par de comunidades (al principio vértices) que da el mayor incremento (o menor decremento) en $Q$.
+2. Buscamos el par de comunidades (al principio vértices) que *al unirse* da el mayor incremento (o menor decremento) en $Q$.
 3. Repetimos 2 hasta que todos los puntos están en una sola comunidad.
 4. Escogemos el número de comunidades que maximiza el valor del $Q$ sobre todas las iteraciones.
+
+Existen varias particularidades de este algoritmo que lo hacen rápido y apropiado para
+redes grandes (ver referencia. Otro método similar es el algoritmo de louvain, por ejemplo).
+
+#### Ejemplo {-}
+
+```{r}
+library(igraphdata)
+data(USairports)
+airports <- as_tbl_graph(USairports)
+# seleccionamos solo pasajeros
+aristas <- airports %>% 
+  activate(edges) %>% 
+  select(to, from, Passengers) %>% as_tibble()
+# agregar
+aristas_agregados <- aristas %>% 
+  filter(to != from) %>% 
+  mutate(to_u = ifelse(to < from, to, from)) %>% 
+  mutate(from_u = ifelse(to < from, from, to)) %>% 
+  group_by(to_u, from_u) %>% 
+  summarise(pax = sum(Passengers)) %>% 
+  rename(to = to_u, from = from_u)
+# nodos, y agregar estado
+nodos <- airports %>% activate(nodes) %>% 
+  as_tibble() %>% 
+  separate(City, into = c('ciudad_nombre', 'estado'), sep = ', ')
+# construir nueva red
+rutas <- tbl_graph(nodes = nodos, edges = aristas_agregados,
+                   directed = FALSE) 
+rutas
+```
+
+
+```{r}
+rutas <- rutas %>% 
+  activate(nodes) %>% 
+  mutate(grupos = group_fast_greedy())
+```
+
+
+```{r}
+layout_rutas <- create_layout(rutas, layout = "graphopt", niter = 500)
+ggraph(layout_rutas) +
+  geom_edge_link(aes(alpha = pax)) +
+  geom_node_point(aes(colour = factor(grupos))) +
+  theme_graph()
+```
+
+Podemos ver la modularidad
+```{r}
+igraph::modularity(rutas, as.factor(rutas %>% activate(nodes) %>% pull(grupos)))
+```
+
+Podemos examinar algunas comunidades:
+
+```{r}
+rutas_12 <- rutas %>% activate(nodes) %>% filter(grupos %in% c(1, 3, 4, 5, 6))
+layout_rutas_12 <- create_layout(rutas_12, layout = "graphopt", niter = 2000)
+ggraph(layout_rutas_12) +
+  geom_edge_link(aes(alpha = pax)) +
+  geom_node_point(aes(colour = factor(grupos))) +
+  theme_graph()
+```
+
+Podemos examinar otras soluciones:
+
+```{r}
+grupos_10 <- igraph::fastgreedy.community(rutas) %>% 
+  igraph::cut_at(10)
+rutas <- rutas %>% activate(nodes) %>% mutate(grupos_10 = grupos_10)
+igraph::modularity(rutas, as.factor(grupos_10))
+```
+
+
+```{r}
+ggraph(layout_rutas) +
+  geom_edge_link(aes(alpha = pax)) +
+  geom_node_point(aes(colour = factor(grupos_10))) 
+  theme_graph()
+```
+
 
 
 
