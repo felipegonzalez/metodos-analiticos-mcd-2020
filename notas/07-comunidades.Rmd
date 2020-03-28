@@ -326,7 +326,7 @@ igraph::modularity(rutas, as.factor(grupos_10))
 ```{r}
 ggraph(layout_rutas) +
   geom_edge_link(aes(alpha = pax)) +
-  geom_node_point(aes(colour = factor(grupos_10))) 
+  geom_node_point(aes(colour = factor(grupos_10))) +
   theme_graph()
 ```
 
