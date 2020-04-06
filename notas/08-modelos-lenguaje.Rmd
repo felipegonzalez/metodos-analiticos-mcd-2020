@@ -961,9 +961,82 @@ $(w, 2^{k+1})$ no está en el filtro. Nuestra estimación
 de la frecuencia del n-grama $w$ es entonces $2^k \leq f < 2^{k+1}$
 
 
+## Ejemplo: Corrector de ortografía
 
-## Representación de palabras y word2vec
+Como ejemplo del canal ruidoso y el papel que juega los modelos del lenguaje, podemos
+ver un sistema simple de corrección de ortografía.
 
-Ahora veremos técnicas más modernas para construir modelos de lenguaje o aproximar modelos de lenguaje
+En nuestro caso, usaremos como $P(W)$ el modelo de bigramas, y el modelo de ruido
+$P(X|W)$ es simple: lo construimos a partir de palabras $p(x|w)$, y consideramos que dada
+una palabra $w$, es posible observar $x$, donde $w$ se produce como transformación de $x$ aplicando:
+
+1. Una eliminación de un caracter
+2. Inserción de un caracter
+2. Sustitución de un caracter
+3. Transposición de dos caracteres adyacentes
+
+Daremos igual probabilidad a todas estas posiblidades, aunque en la realidad este modelo
+debería ser más refinado (¿cómo mejorarías este modelo?¿Con qué datos?).
+
+En el siguiente paso tendríamos que producir sugerencias de corrección.
+En caso de encontrar una palabra que no está en el diccionario,
+podemos producir palabras similares (a cierta distancia de edición),
+y filtrar aquellas que pasen el filtro de bloom (ver [How to write a spelling corrector](http://norvig.com/spell-correct.html)).
+
+
+
+```{r}
+generar_candidatos <- function(palabra){
+  caracteres <- c(letters, 'á', 'é', 'í', 'ó', 'ú', 'ñ')
+  pares <- lapply(0:(nchar(palabra)), function(i){
+    c(str_sub(palabra, 1, i), str_sub(palabra, i+1, nchar(palabra)))
+  })
+  eliminaciones <- pares %>% map(function(x){ paste0(x[1], str_sub(x[2],2,-1))})
+  sustituciones <- pares %>% map(function(x)
+      map(caracteres, function(car){
+    paste0(x[1], car, str_sub(x[2], 2 ,-1))
+  })) %>% flatten 
+  inserciones <- pares %>% map(function(x){
+    map(caracteres, function(car) paste0(x[1], car, x[2]))
+  }) %>% flatten
+  transposiciones <- pares %>% map(function(x){
+    paste0(x[1], str_sub(x[2],2,2), str_sub(x[2],1,1), str_sub(x[2],3,-1))
+  })
+  c(eliminaciones, sustituciones, transposiciones, inserciones)
+}
+```
+
+```{r}
+candidatos <- generar_candidatos("solado")
+sprintf("Número de candidatos generados: %0.i", length(candidatos))
+print("Algunos candidatos:")
+head(candidatos)
+```
+
+```{r}
+sugerir <- function(frase, mod_bi){
+  tokens <- normalizar(frase) %>% str_split(" ") %>% first %>% tail(2)
+  candidatos <- generar_candidatos(tokens[2])
+  candidatos_tbl <- mod_bi %>% filter(w_n_1 == tokens[1], w_n_0 %in% c(tokens[2], candidatos)) %>% 
+    mutate(log_posterior = 0 + log_p) # suponemos todos las corrupciones igualmente probabiles
+  arrange(candidatos_tbl, desc(log_posterior))
+}
+```
+
+```{r}
+sugerir(c("esto es un echo"), mod_bi) %>% head()
+```
+
+```{r}
+sugerir("dice que lo hechó", mod_bi)
+```
+
+```{r}
+sugerir("un pantalón asul", mod_bi)
+```
+
+Este modelo está basado en bigramas, pero podemos usar también unigramas por ejemplo para
+producir recomendaciones cuando no encontremos bigramas apropiados.
+
 
 
