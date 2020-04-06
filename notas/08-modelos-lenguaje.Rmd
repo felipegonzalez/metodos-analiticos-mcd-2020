@@ -125,7 +125,49 @@ ocurrir.
 
 Piensa cómo sería el modelo de canal ruidoso $P(X|W)$ si nuestro problema fuera reconocimiento de frases habladas o escritas, o en traducción entre dos lenguajes.
 
----
+
+## Corpus y vocabulario
+
+En  los ejemplos vistos arriba, vemos que necesitamos definir qué son
+las *palabras* $w_i$, qué lenguaje estamos considerando, y cómo estimamos las probabilidades.
+
+```{block2, type='comentario'}
+- Un **corpus** es una colección de textos (o habla) del lenguaje que nos interesa.
+- El **vocabulario** es una colección de palabras que ocurren en el **corpus** (o más general, en el lenguaje).
+- La definición de **palabra** (token) depende de la tarea de NLP que nos interesa.
+```
+
+Algunas decisiones que tenemos que tomar, por ejemplo:
+
+- Generalmente, cada palabra está definida como una unidad separada
+por espacios o signos de puntuación.
+- Los signos de puntuación pueden o no considerarse como palabras.
+- Pueden considerarse palabras distintas las que tienen mayúscula y las que no (por ejemplo, para reconocimiento de lenguaje hablado no nos
+interesan las mayúsculas).
+- Pueden considerarse palabras distintas las que están escritas incorrectamente, o no.
+- Pueden considerarse plurales como palabras distintas, formas en masculino/femenino, etc. (por ejemplo, en clasificación de textos quizá
+sólo nos importa saber la raíz en lugar de la forma completa de la palabra).
+- Comienzos y terminación de oraciones pueden considerarse como
+"palabras" (por ejemplo, en reconocimiento de texto hablado).
+
+```{block2, type='resumen'}
+Al proceso que encuentra todas las palabras en un texto se le
+llama **tokenización** o **normalización de texto**. Los **tokens**
+de un texto son las ocurrencias en el texto de las palabras
+en el vocabuario.
+```
+
+En los ejemplos que veremos a continuación consideraremos las
+siguiente normalización:
+
+- Consideramos como una palabra el comienzo y el fin de una oración.
+- Normalizamos el texto a minúsculas.
+- No corregimos ortografía, y consideramos las palabras en la forma que ocurren.
+- Consideramos signos de puntuación como palabras.
+
+El **vocabulario** es el conjunto de todas las palabras posibles en nuestros
+textos. Lo denotaremos como $w^1, w^2, \ldots, w^N$, para un vocabulario de $N$ 
+distintas palabras o tokens.
 
 ## Modelos de lenguaje: n-gramas
 
@@ -213,20 +255,25 @@ la manera más común es introducir dos símbolos nuevos
 - Para inicio de frase usamos $<s>$
 - Para fin de frase usamos $</s>$
 
+
+
 De esta manera, el proceso de generación de frases en unigramas es el siguiente:
 
-1. Comenzamos con el símbolo $<s>$
-2. Escogemos una palabra de $w_1$ a $w_n$ y $</s>$. Estas probabilidades las denotamos como
-$p(w_1), p(w_2),\ldots, p(w_n)$ y $p(<\s>)$, y todas estas probabilides deben sumar 1.
-3. Si escogimos $</s>$, terminamos la frase. En otro caso, regresamos a 2.
+1. Comenzamos con el símbolo $<s>$. 
 
-La probabilidad de escoger la frase $p(<s>w_1w_2\cdots w_n</s>)$ es entonces
+Comenzando con $i = 1$:
 
-$p(<s>w_1w_2\cdots w_n</s>) = p(w_1)p(w_2)\cdots p(w_n)p(</s>).$
+2. Escogemos una palabra $w_i$ del vocabulario $w^1$ a $w^N$ y $</s>$. Estas probabilidades las denotamos como
+$P(w^1), P(w^2),\ldots, P(w^N)$ y $P(<\s>)$, y todas estas probabilides deben sumar 1.
+3. Si escogimos $</s>$, terminamos la frase. En otro caso, regresamos a 2 con $i=i+1$.
+
+La probabilidad de escoger la frase $P(<s>w_1w_2\cdots w_n</s>)$ es entonces
+
+$P(<s>w_1w_2\cdots w_n</s>) = P(w_1)P(w_2)\cdots P(w_n)P(</s>).$
 
 Por construcción, las probabilidades sobre todas las frases suman 1. Necesitamos definir
 todas las probabilidades
-$$p(w)$$
+$$P(w)$$
 donde $w$ es una palabra o $</s>$.
 
 #### Ejercicio
@@ -238,12 +285,15 @@ de obtener una frase de tamaño 1, 2, 3, etc. Verifica que estas probabilidades 
 
 Para **bigramas** el proceso de generación es el siguiente:
 
-1. Comenzamos con el símbolo $<s>$.
-2. Escogemos una palabra $w$ según las probabilidades ya definidas 
-$p(w_1|<s>), p(w_2|<s>), \ldots, p(w_n|<s>)$. Estas probabilidades suman 1.
-3. Si la palabra escogida fue $w^i$, escogemos una palabra $w^{i+1}$ según las probabilidaes
-$p(w_1|w^i), p(w_2|w^i), \ldots, p(w_n|w^i), p(</s>|w_^i)$. Estas probabilidades suman 1.
-4. Si la palabra escogida es $</s>$ terminamos. Si no, repetimos 3 con $w^({i+1})$.
+1. Comenzamos con el símbolo $<s>$.  
+2. Escogemos una palabra $w_1$ según las probabilidades ya definidas 
+$P(w^1|<s>), p(w^2|<s>), \ldots, p(w^N|<s>)$ sobre el vocabulario. Estas probabilidades suman 1.
+
+Comenzando con $i=1$,
+
+3. Escogemos una palabra $w_i$ según las probabilidades ya definidas 
+$P(w^1|<s>), p(w^2|<s>), \ldots, p(w^N|<s>)$ sobre el vocabulario. Estas probabilidades suman 1.
+4. Si la palabra escogida es $</s>$ terminamos. Si no, repetimos 3 con $i=i+1$.
 
 
 La probabilidad de una frase dada dado el modelo de bigramas es entonces:
@@ -251,7 +301,7 @@ La probabilidad de una frase dada dado el modelo de bigramas es entonces:
 $$P(<s>w_1\cdots w_n </s>) = P(w_1|<s>)P(w_2|w_1)P(w_3|w_2)  P(w_4|w_3) \cdots P(w_n|w_{n-1})P(</s>|w_n).$$
 
 
-Por definición, la suma de probabilidades sobre todas las frases es 1. Necesitamos definir
+Por definición, la suma de probabilidades sobre todas las frases es 1. Necesitamos definir entonces
 todas la probablidades
 $$p(w|z),$$
 donde $z$ es una palabra o $<s>$, y $w$ es una palabra o $</s>$.
@@ -260,9 +310,12 @@ Para **trigramas** podemos agregar un símbolo $<s><s>$ al inicio. Esto nos perm
 simple el proceso de generación como sigue:
 
 1. Comenzamos con los dos símbolos $<s><s>$. 
-2. Cada palabra nueva $w^i$ se escoge según las probabilidades $P(w|w^1w^2)$ sobre $w$ en el vocabulario. Estas
-probabilidades deben sumar uno. 
-3. Terminamos cuando la palabra nueva escogida es $</s>$.
+
+Comenzando con $i=1$:
+
+2. Cada palabra nueva $w_i$ se escoge según las probabilidades $P(w|w_1w_2)$ sobre $w$ en el vocabulario 
+($w^1$, \ldots $w^N$). Estas probabilidades deben sumar uno. 
+3. Terminamos cuando la palabra nueva escogida es $</s>$. Si no, repetimos 2 con $i=i+1$
 
 Nótese que en la primera elección escogemos de $p(w|<s><s>)$ y luego de $p(w|<s> w^1)$.
 
@@ -293,12 +346,13 @@ es un simplificación considerable.
 
 ---
 
-La probabilidad de bigramas también se puede escribir como:
+La probabilidad de bigramas también se puede escribir como, usando las convenciones de 
+caracteres de inicio y de final de frase, como
 
 $$P(w_1\cdots w_n) = \prod_{j=1}^n P(w_j | w_{j -1}).$$
 
 
-Y así podemos seguir . Por ejemplo, con el **modelo de trigramas**,
+Y así podemos seguir. Por ejemplo, con el **modelo de trigramas**,
 
 $$P(w_1\cdots w_n) = P(w_3|w_1w_2)  P(w_4|w_2w_3) \cdots P(w_n| w_{n-2} w_{n-1}).$$
 
@@ -905,25 +959,6 @@ simplemente checamos sucesivamente si el elemento $(w, 2^j)$ está
 en el filtro o no, hasta que encontramos una $k$ tal que
 $(w, 2^{k+1})$ no está en el filtro. Nuestra estimación
 de la frecuencia del n-grama $w$ es entonces $2^k \leq f < 2^{k+1}$
-
-
-## Un corrector simple de ortografía
-
-Construiremos un corrector simple de ortografía que da sugerencias, usando el modelo de bigramas. Usaremos
-el modelo del canal ruidoso. Como discutimos arriba, debemos construir un modelo del ruido de transimisión
-que es $P(X|W)$ cuando $W$ es un mensaje dado. En nuestro ejemplo, este modelo será construido de manera
-simple palabra por palabra $P(x|w)$. Dada una palabra $w$, los errores que pueden ocurrir que nos hacen 
-recibir x son de los siguientes tipo:
-
-- Trasposición de caracteres
-- Sustitución de un caracter por otro
-
-Supondremos (aunque deberíamos construir esto con datos. ¿cómo lo harías?) que todos estos tipos de errores 
-tienen la misma probabilidad
-
-```{r}
-
-```
 
 
 
