@@ -1,0 +1,44 @@
+---
+title: "Tarea 10: Modelos de lenguaje"
+output: html_document
+---
+
+
+
+## Unigramas
+
+Haz los siguientes ejercicios usando el **modelo de unigramas**. Los ejercicios muestran por qué
+es importante usar los símbolos de inicio-fin de frase.
+
+Supón que solo hay dos palabras en nuestro vocabulario $a$ y $b$. Con probabilidad de ocurrencia en el 
+languaje de $p_a$ y $p_b$. 
+
+1. Si no usamos símbolos de inicio y fin de frase, ¿cuánto suman las probabilidades de las frases tamaño 1 de este
+vocabulario? (Supón que $p_a + p_b =1$). ¿cuánto suman las probabilidades de las frases de tamaño 2? 
+
+2. Discute por qué por el inciso anteriores no podemos dar una distribución de probabilidad para frases
+de longitud arbitraria.
+
+3. Supón que usamos símbolos de inicio $<s>$ y fin de frase $</s>$, 
+¿cuánto suman las probabilidades de las frases de tamaño 1 de este vocabulario? (Supón que $p_{<s>} + p_a + p_b + p_{</s>}=1$) ¿cuánto suman las probabilidades de las frases tamaño 2?
+
+4. (Extra más difícil) Muestra que la suma de probabilidades sobre todas frases de longitud arbitraria es 1
+
+
+## Bigramas
+
+ (De nuestra referencia de Jurafsky). Considera el siguiente corpus:
+
+```
+<s> I am Sam </s>
+<s> Sam I am </s>
+<s> I am Sam </s>
+<s> I do not like green eggs and Sam </s>
+```
+
+Con este corpus, 
+
+5. Usa un modelo de bigramas (usando conteos) para calcular $P(Sam | am)$ y
+$P(I | <s>)$. 
+6.  Usa el modelo de bigramas para calcular la probabilidad de la frase *I am Sam*
+
