@@ -903,10 +903,10 @@ le llama **backoff**.
 Un método popular con mejor desempeño que Laplace es
 el método de descuento absoluto (da) de **Kneser-Ney**. Consideremos el caso de bigramas.
 
-En primer lugar, este método utiliza interpolación con
-un modelo para bigramas, considerando que debemos quitar algo de masa de probabilidad 
+En primer lugar, este método utiliza interpolación entre bigramas y unigramas, 
+considerando que debemos quitar algo de masa de probabilidad 
 a bigramas observados para distribuir en bigramas no observados. El descuento lo
-hacemos absoluto (por ejemplo restando $d=0.75$, ver [@jurafsk])
+hacemos absoluto (por ejemplo restando $d=0.75$, ver [@jurafsky])
 
 $$P_{da}(w|a) = \frac{N(aw) - d}{N(a)} + \lambda(a) P(w).$$
 
@@ -915,9 +915,9 @@ $d$, e interpolamos con las probabilidad de ocurrencia de unigramas. $\lambda(a)
 siempre y cuando $N(w)\geq 1$, que suponemos (vocabulario completo, quizá incluyendo unk).
 
 Esta primera parte de descuento absoluto pone masa de probabilidad sobre bigramas no vistos. Podemos
-mejorar si en lugar de considerar $P(w)$ consideramos una cantidad más específica:
+mejorar si en lugar de considerar $P(w)$ consideramos una cantidad más específica, como sigue:
 
-En segundo lugar, en vez de usar las probabilidades crudas
+En vez de usar las probabilidades crudas
 de unigramas $P(w)$, usamos las probabilidades de continuación
 de unigramas $P_{cont}(w)$, pues aquí $w$ aparece como continuación después de $a$:
 
