@@ -986,7 +986,7 @@ debería ser más refinado (¿cómo mejorarías este modelo?¿Con qué datos?).
 En el siguiente paso tendríamos que producir sugerencias de corrección.
 En caso de encontrar una palabra que no está en el diccionario,
 podemos producir palabras similares (a cierta distancia de edición),
-y filtrar aquellas que pasen el filtro de bloom (ver [How to write a spelling corrector](http://norvig.com/spell-correct.html)).
+y filtrar aquellas que están en el vocabulario (ver [How to write a spelling corrector](http://norvig.com/spell-correct.html)).
 
 
 
