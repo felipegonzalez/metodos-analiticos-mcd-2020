@@ -279,3 +279,354 @@ feed_fow_p("el gato", C, H, U)
 feed_fow_p("el gato", C_1, H_1, U_1)
 ```
 
+
+**Observación**: a partir de este principio, es posible construir arquitecturas más 
+refinadas que tomen en cuenta, por ejemplo,  relaciones más lejanas entre
+partes de oraciones (no solo el contexto del n-grama), ver por ejemplo [el capítulo 10 del libro
+de Deep Learning de Goodfellow, Bengio y Courville](https://www.deeplearningbook.org/contents/rnn.html).
+
+Abajo exploramos una parte fundamental de estos modelos: representaciones de palabras, y modelos
+relativamente simples para obtener estas representaciones.
+
+## Representación de palabras
+
+Un aspecto interesante de el modelo de arriba es que
+nos da una representación vectorial de las palabras, en la forma
+de los parámetros ajustados de la matriz $C$. Esta se puede entender
+como una descripción numérica de cómo funciona una palabra en el contexto de su n-grama.
+
+Por ejemplo, deberíamos encontrar que palabras como "perro" y "gato" tienen representaciones similares. La razón es que cuando aparecen,
+las probabilidades sobre las palabras siguientes deberían ser similares, pues estas son dos palabras que se pueden usar en muchos contextos
+compartidos.
+
+También podríamos encontrar que palabras como perro, gato, águila, león, etc. tienen partes o entradas similares en sus vectores de representación, que es la parte que hace que funcionen como "animal mamífero" dentro de frases. 
+
+Veremos que hay más razones por las que es interesante esta representación.
+
+
+## Modelos de word2vec
+
+Si lo que principalmente nos interesa es obtener la representación
+vectorial de palabras, más recientemente se descubrió que es posible 
+simplificar considerablemente el modelo de arriba para poder entrenarlo mucho más rápido, y obtener una representación que en muchas tareas se desempeña bien ([@word2vec]).
+
+Hay dos ideas básicas que se pueden usar para reducir la complejidad del entrenamiento (ver más
+en [@goodfellow] y [@word2vec]:
+
+- Eliminar la segunda capa oculta: modelo de *bag-of-words* continuo y modelo de *skip-gram*.
+- Cambiar la función objetivo (minimizar devianza/maximizar verosimilitud) por una más simple, mediante un truco que se llama *negative sampling*.
+
+Como ya no es de interés central predecir la siguiente palabra a partir
+de las anteriores, en estos modelos **intentamos predecir la palabra
+central a partir de las que están alrededor**. 
+
+### Arquitectura continuous bag-of-words
+
+La entrada es igual que en el modelo completo. En primer lugar,
+simplificamos la segunda capa oculta pondiendo en $z$ el promedio de
+los vectores $C(w_{n-2}), C(w_{n-1})$.  La última capa la dejamos igual por el momento:
+
+![Imagen](imagenes/cbow_fig.png)
+
+El modelo se llama bag-of-words porque todas las entradas de la primera capa oculta contribuyen de la misma manera en la salida, independientemente del orden. Aunque esto no suena como buena idea para construir un modelo de lenguaje, veremos que resulta en una representación adecuada para algunos problemas.
+
+1. En la primera capa oculta, tenemos un mapeo de las entradas $w_1,\ldots, w_{n-1}$ a $x=C(w_1),\ldots, C(w_{n-1})$, donde $C$ es una función que mapea palabras a vectores de dimensión $d$. $C$ también se puede pensar como una matriz de dimensión $|V|$ por $d$. En la capa de entrada,
+
+$$w_{n-2},w_{n-1} \to x = (C(w_{n-2}), C(w_{n-1})).$$
+
+
+2. En la siguiente "capa"" oculta simplemente sumamos las entradas de $x$. Aquí nótese que realmente no hay parámetros.
+
+3. Finalmente, la capa de salida debe ser un vector de probabilidades
+sobre todo el vocabulario $|V|$. En esta capa tenemos pesos $U$ y hacemos
+$$y = b + U\sigma (z),$$
+y finalmente usamos softmax para tener probabilidades que suman uno:
+$$p_i = \frac{\exp (y_i) }{\sum_j exp(y_j)}.$$
+
+En el ajuste maximizamos la verosimilitud sobre el corpus. Por ejemplo, para una frase, su log verosimilitud es:
+
+$$\sum_t \log \hat{P}(w_{t,n}|w_{t,n+1} \cdots w_{t-n-1}) $$
+
+### Arquitectura skip-grams
+
+Otro modelo simplificado, con más complejidad computacional pero
+mejores resultados (ver [@word2vec]) que
+el bag-of-words, es el modelo de skip-grams. En este caso, dada
+cada palabra que encontramos, intentamos predecir un número
+fijo de las palabras anteriores y palabras posteriores 
+(el contexto es una vecindad de la palabra).
+
+![Imagen](imagenes/skipgram.png)
+
+
+La función objetivo se defina ahora (simplificando) como suma sobre $t$:
+
+$$-\sum_t \sum_{ -2\leq j \leq 2, j\neq 0} \log P(w_{t-j} | w_t)$$
+(no tomamos en cuenta dónde aparece exactamente $w_{t-j}$ en relación a $w_t$, simplemente consideramos que está en su contexto),
+donde
+
+$$\log P(w_{t-j}|w_t) =  u_{t-j}^tC(w_n) - \log\sum_k \exp{u_{k}^tC(w_n)}$$
+
+Todavía se propone una simplificación adicional que resulta ser efectiva:
+
+### Muestreo negativo
+
+La siguiente simplificación consiste en cambiar la función objetivo. En word2vec puede usarse "muestreo negativo".
+
+Para empezar, la función objetivo original (para contexto de una sola palabra) es
+
+
+$$E = -\log \hat{P}(w_{a}|w_{n}) = -y_{w_a} + \log\sum_j \exp(y_j),$$
+
+donde las $y_i$ son las salidas de la penúltima capa. La dificultad está en el segundo término, que es sobre todo el vocabulario en incluye todos los parámetros del modelo (hay que calcular las parciales de $y_j$'s
+sobre cada una de las palabras del vocabulario).
+
+
+La idea del muestreo negativo es que si $w_a$ 
+está en el contexto de $w_{n}$, tomamos una muestra de $k$ palabras
+$v_1,\ldots v_k$ al azar
+(2-50, dependiendo del tamaño de la colección), y creamos $k$
+"contextos falsos" $v_j w_{n}$, $j=1\ldots,k$. Minimizamos
+en lugar de la observación de arriba
+
+$$E = -\log\sigma(y_{w_a}) + \sum_{j=1}^k \log\sigma(y_j),$$
+en donde queremos maximizar la probabilidad de que ocurra
+$w_a$ vs. la probabilidad de que ocurra alguna de las $v_j$.
+Es decir, solo buscamos optimizar parámetros para separar lo mejor
+que podamos la observación de $k$ observaciones falsas, lo cual implica que tenemos que mover un número relativamente chico de
+parámetros (en lugar de todos los parámetros de todas las palabras del vocabulario). 
+
+Las palabras "falsas" se escogen según una probabilidad ajustada
+de unigramas (se observó empíricamente mejor desempeño cuando escogemos cada palabra con probabilidad proporcional a $P(w)^{3/4}$, en lugar de $P(w)$, ver [@word2vec]).
+
+
+### Ejemplo {-}
+
+```{r, message=FALSE, warning = FALSE}
+if(!require(wordVectors)){
+  devtools::install_github("bmschmidt/wordVectors")
+}
+library(wordVectors)
+```
+
+```{r prepw2v}
+library(tidyverse)
+periodico <- read_lines(file= "../datos/noticias/Es_Newspapers.txt",
+                        progress = FALSE)
+normalizar <- function(texto, vocab = NULL){
+  # minúsculas
+  texto <- tolower(texto)
+  # varios ajustes
+  texto <- gsub("\\s+", " ", texto)
+  texto <- gsub("\\.[^0-9]", " _punto_ ", texto)
+  texto <- gsub(" _s_ $", "", texto)
+  texto <- gsub("\\.", " _punto_ ", texto)
+  texto <- gsub("[«»¡!¿?-]", "", texto) 
+  texto <- gsub(";", " _punto_coma_ ", texto) 
+  texto <- gsub("\\:", " _dos_puntos_ ", texto) 
+  texto <- gsub("\\,[^0-9]", " _coma_ ", texto)
+  texto <- gsub("\\s+", " ", texto)
+  texto
+}
+periodico_df <- tibble(txt = periodico) %>%
+                mutate(id = row_number()) %>%
+                mutate(txt = normalizar(txt))
+```
+
+
+```{r prepw2v}
+if(!file.exists('./salidas/noticias_w2v.txt')){
+  tmp <- tempfile()
+  # tokenización
+  write_lines(periodico_df$txt,  tmp)
+  prep <- prep_word2vec(tmp, 
+          destination = './salidas/noticias_w2v.txt', bundle_ngrams = 2)
+  } 
+```
+
+Construimos un modelo con vectores de palabras de tamaño 100,
+skip-grams de tamaño 4, y ajustamos con muestreo negativo
+de tamaño 20:
+
+```{r modelow2v, message = FALSE, warning = FALSE, results=FALSE}
+if (!file.exists("./salidas/noticias_vectors.bin")) {
+  model <- train_word2vec("./salidas/noticias_w2v.txt", 
+          "./salidas/noticias_vectors.bin",
+          vectors = 100, threads = 4, window = 4, cbow = 0,  
+          iter = 5, negative_samples = 20, min_count = 5) 
+} else {
+  model <- read.vectors("./salidas/noticias_vectors.bin")
+}
+
+```
+
+```{bash}
+ls -lah ./salidas
+```
+
+
+El resultado son los vectores aprendidos de las palabras, por ejemplo
+
+```{r}
+model[["gol"]] %>% as.numeric
+```
+
+## Espacio de representación de palabras {#esprep}
+
+Como discutimos arriba, palabras que se usan en contextos
+similares por su significado o por su función (por ejemplo, "perro" y "gato"") deben tener representaciones similares, pues su contexto tiende a ser similar. La distancia que usamos el similitud coseno.
+
+Podemos verificar con nuestro ejemplo:
+
+```{r sim1}
+ejemplos <- model %>% closest_to("gol", n = 5)
+ejemplos
+```
+
+```{r sim2}
+model %>% closest_to("presidente", n = 5)
+```
+
+También podemos buscar varias palabras:
+
+```{r}
+palabras <- c("soleado", "nuboso", "lluvioso")
+model %>% closest_to(palabras)
+```
+
+Que es lo mismo que:
+
+```{r}
+# extraer vectores de palabras y promediar
+vectores <- map(palabras, ~ model[[.x]]) %>% 
+  map(as.numeric) %>% bind_cols
+media <- apply(as.matrix(vectores), 1, mean)
+model %>% closest_to(t(media))
+```
+
+Podemos ver cómo se ven las palabras más similares a "lluvia" o "sol", 
+
+```{r}
+library(ggrepel)
+vectores = model[[c("lluvia", "sol"),
+                  average = F]]
+sims <- model[1:5000,] %>%  # las 5000 palabras más comunes
+        cosineSimilarity(vectores) %>%
+        as.data.frame() %>%
+        rownames_to_column() 
+similares <- sims %>% filter_at(vars(-rowname), any_vars(. > 0.6))  
+ggplot(similares, aes(x = lluvia, y = sol, label = rowname)) +
+  geom_text_repel() + ylab("Similitud con sol") +
+  xlab("Similitud con lluvia")
+```
+
+
+Ahora consideremos cómo se distribuyen las palabras en este
+espacio, y si existe estructura geométrica en este espacio.
+
+Consideremos primero el caso de plurales de sustantivos.
+
+- Como el contexto de los plurales es distinto de los singulares,
+nuestro modelo puede capturar en los vectores su diferencia.
+- Examinamos entonces cómo son geométricamente
+diferentes las representaciones de plurales vs singulares
+- Si encontramos un patrón reconocible, podemos utilizar este patrón, por ejemplo,
+para encontrar la versión plural de una palabra singular, *sin usar ninguna
+regla del lenguaje*.
+
+Una de las relaciones geométricas más simples es la adición de vectores. Por ejemplo,
+extraemos la diferencia entre gol y goles:
+
+```{r}
+plural_1 <- model[["goles"]] - model[["gol"]]
+plural_1
+```
+
+que es un vector en el espacio de representación de palabras. Ahora sumamos este vector
+a un sustantivo en singular, y vemos qué palabras están cercas de esta "palabra sintética":
+
+```{r}
+vector <-  model[["partido"]] + plural_1
+model %>% closest_to(vector, n = 5)
+```
+
+Nótese que la más cercana es justamente el plural correcto, o otros plurales con relación
+al que buscábamos (como *encuentros*)
+
+Otro ejemplo:
+
+```{r}
+plural_1 <- model[["días"]] - model[["día"]]
+vector <-  model[["mes"]] + plural_1
+model %>% closest_to(vector, n = 20) 
+```
+
+
+
+
+
+Veremos ahora cómo funciona para el género de sustantivos:
+
+```{r}
+fem_1 <- model[["presidenta"]] - model[["presidente"]]
+vector <-  model[["rey"]] + fem_1
+model %>% closest_to(vector, n = 5) %>% filter(word != "rey")
+```
+```{r}
+vector <-  model[["tío"]] + fem_1
+model %>% closest_to(vector, n = 5) %>% filter(word != "tío")
+```
+
+Y la relación adverbio - adjetivo también podemos considerarla:
+
+```{r}
+adv <- model[["lentamente"]] - model[["lento"]]
+vector <-  model[["rápido"]] + adv
+model %>% closest_to(vector, n = 10) %>% filter(word != "lentamente")
+```
+
+La evaluación de estas aplicaciones puede hacerse por ejemplo,
+con una lista de singular/plurales, de adjetivos/adverbios, masculino/femenino, etc (ver [@word2vec]).
+
+**Observación**: falta afinar los parámetros en este modelo.
+Puedes probar cambiando negative sampling (por ejemplo, incrementa a 40), el número de vectores (50-200, por ejemplo), e incrementando *window* y el número de iteraciones.
+
+Considera también un modelo preentrenado mucho más grande como [este](https://github.com/uchile-nlp/spanish-word-embeddings) y repite las tareas mostradas (el formato bin es estándar para la implementación que usamos de word2vec).
+
+---
+
+Podemos visualizar el espacio de representaciones reduciendo dimensionalidad. En este caso, utilizamos *tsne*:
+
+```{r, out.width = "800px"}
+library(tsne)
+library(ggplot2)
+library(ggrepel)
+mat_vs <- model@.Data
+# solo calculamos para las 500 palabras más comunes
+num_palabras <- 500 
+set.seed(1203)
+vs_2 <- tsne(mat_vs[1:num_palabras, ], 
+             max_iter = 1000, perplexity = 50)
+```
+
+```{r}
+set.seed(823)
+colnames(vs_2) <- c("V1", "V2")
+df_vs <- as_tibble(vs_2, .name_repair = "check_unique") %>%
+  mutate(palabra = rownames(mat_vs[1:num_palabras, ]))
+ggplot(df_vs %>% sample_n(250), 
+  aes(x = V1, y = V2, label = palabra)) +
+  geom_point(colour = 'red', alpha = 0.3) +
+  geom_text_repel(size = 2, force = 0.3, segment.alpha = 0.5) 
+```
+
+## Usos de representaciones distribuidas
+
+La idea general de construir representaciones densas de las palabras
+(en lugar de representaciones ralas, como codificación dummy o one-hot encoding) es una fundamental en varias tareas de procesamiento de lenguaje natural. Se utiliza en clasificación de textos (*fast-text* es similar
+al modelo bag-of-words),
+respuesta de preguntas, traducción automática, recuperación
+de información, reconocimiento de entidades, etc. Word2vec también es usado para sistemas de recomendación (las palabras son artículos, las canastas son los textos).
+
+
+
