@@ -5,7 +5,7 @@ modelos de lenguajes y resolver tareas de NLP. Se trata de modelos de lenguaje q
 estructura, son más fáciles de regularizar y de ampliar si es necesario para incluir
 dependencias de mayor distancia. El método de conteo/suavizamiento de ngramas es simple y funciona 
 bien para algunas tareas, pero podemos construir mejores modelos con enfoques más estructurados, y con
-más capacidad para aprender aspectos más complejos del lenguaje natural
+más capacidad para aprender aspectos más complejos del lenguaje natural. 
 
 Un enfoque que recientemente se ha vuelto más importante es el de redes neuronales. Si $w=w_1w_2\cdots w_N$ es una frase, y las $w$ representan palabras, recordemos que un modelo de lenguaje con dependencia de $n$-gramas consiste de las probabilidades
 
@@ -37,12 +37,14 @@ intentando no perder mucho de su sentido
 original, lo que nos permite conocer palabras por su contexto, aún cuando no las hayamos observado antes.
 
 
-### Ejemplo {#ejemplo}
+### Ejemplo {-}
+
 ¿Cómo puede funcionar este enfoque? Por ejemplo, si vemos la frase "El gato corre en el jardín", sabemos que una frase probable debe ser también "El perro corre en el jardín", pero quizá nunca vimos en el corpus la sucesión "El perro corre". La idea es que como "perro" y "gato" son funcionalmente similares (aparecen en contextos similares en otros tipos de oraciones como el perro come, el gato come, el perro duerme, este es mi gato, etc.), un modelo como el de arriba daría vectores similares a "perro" y "gato", pues aparecen en contextos similares. Entonces el modelo daría una probabilidad alta a "El perro corre en el jardín".
 
 ## Modelo de red neuronal
 
-Podemos entonces construir una red neuronal con 2 capas ocultas como sigue. Usemos el ejemplo de trigramas:
+Podemos entonces construir una red neuronal con 2 capas ocultas como sigue (segimos [@bengio], una de
+las primeras referencias en usar este enfoque). Usemos el ejemplo de trigramas:
 
 1. En la primera capa oculta, tenemos un mapeo de las entradas $w_1,\ldots, w_{n-1}$ a $x=C(w_1),\ldots, C(w_{n-1})$, donde $C$ es una función que mapea palabras a vectores de dimensión $d$. $C$ también se puede pensar como una matriz de dimensión $|V|$ por $d$. En la capa de entrada,
 
@@ -102,7 +104,7 @@ rownames(C) <- c("d_1", "d_2")
 C
 ```
 
-En la siguiente capa consideremos que usamos solamente 3 unidades. Como estamos considerando bigramas, necesitamos una entrada de tamaño 4 (representación de un bigrama, que son dos vectores de la matriz $C$)
+En la siguiente capa consideremos que usaremos, arbitrariamente, $h=3$ unidades. Como estamos considerando bigramas, necesitamos una entrada de tamaño 4 (representación de un bigrama, que son dos vectores de la matriz $C$)
 
 ```{r}
 H <- round(matrix(rnorm(12, 0, 0.1), 3, 4), 2)
@@ -110,7 +112,7 @@ H
 ```
 
 Y la última capa es la del vocabulario. Son entonces 8 unidades,
-con 3 entradas cada una:
+con 3 entradas cada una. La matriz de pesos es:
 
 ```{r}
 U <- round(matrix(rnorm(24, 0, 0.1), 8, 3), 2)
@@ -214,8 +216,11 @@ feed_fow_trigrama <- function(trigrama, C, H, U) {
 Y ahora aplicamos a todos los trigramas:
 
 ```{r}
-texto_entrena <- "_s_ el perro corre _ss_ _s_ el gato corre _ss_ _s_ el león corre _ss_ _s_ el león caza _ss_ _s_ el gato caza _ss_"
-entrena_trigramas <- tokenizers::tokenize_ngrams(texto_entrena,n = 3)[[1]]
+texto_entrena <- c("_s_ el perro corre _ss_", " _s_ el gato corre _ss_", " _s_ el león corre _ss_",
+  "_s_ el león caza _ss_",  "_s_ el gato caza _ss_")
+entrena_trigramas <- map(texto_entrena, 
+  ~tokenizers::tokenize_ngrams(.x, n = 3)[[1]]) %>% 
+  flatten %>% unlist
 entrena_trigramas
 ```
 
@@ -233,7 +238,7 @@ entre los vectores de estas tres palabras, por ejemplo:
 C_1 <- C
 indices <- colnames(C) %in%  c("perro", "gato", "león")
 C_1[1, indices] <- 3.0
-C_1[1, !indices] <- -2.0
+C_1[1, !indices] <- -1.0
 C_1
 ```
 
@@ -242,7 +247,7 @@ similar, así que podríamos poner en la unidad 1:
 
 ```{r}
 H_1 <- H
-H_1[1, ] <- c(-1, -1, 5, -1)
+H_1[1, ] <- c(0, 0, 5, 0)
 H_1
 ```
 
