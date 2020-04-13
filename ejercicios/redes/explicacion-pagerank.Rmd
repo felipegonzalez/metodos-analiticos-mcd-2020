@@ -28,16 +28,16 @@ Nótese que hay un renglón de ceros por el callejón sin salida (nodo 5)
 Normalizando por renglón, obtenemos:
 
 ```{r}
-M_1 <- A / apply(A, 1, sum)
-M_1
+M <- A / apply(A, 1, sum)
+M
 ```
 
 
 Por el callejón sin salida obtenemos un renglon no definido (el 5). Este renglón debe ser de ceros:
 
 ```{r}
-M_1[5, ] <- 0
-M_1
+M[5, ] <- 0
+M
 ```
 
 Y esta es la matriz con la que comenzamos.
@@ -51,31 +51,31 @@ $$0.9 M_1 + (1-0.9)\frac{1}{6}$$
 Para el paso 1 hacemos
 
 ```{r}
-M <- 0.9 * M_1 + 0.1/6
-M
+M_1 <- 0.9 * M + 0.1/6
+M_1
 ```
 
 Todavía no está completa, para el paso 2 hacemos
 
 ```{r}
-M[5, ] <- 1/6
-M %>% round(3)
+M_1[5, ] <- 1/6
+M_1 %>% round(3)
 ```
 
-Y esta es la matriz $M$
+Y esta es la matriz $M_1$
 
 Consideremos una iteración del vector $v$
 
 ```{r}
 v <- rep(1/6, 6)
-t(M) %*% v
+t(M_1) %*% v
 ```
 
 Esta es la primera iteración de pagerank. Puedes hacer más iteraciones a ver dónde converge:
 
 ```{r}
 for(i in 1:20){
-  v <- t(M) %*% v
+  v <- t(M_1) %*% v
 }
 v
 ```
@@ -84,15 +84,15 @@ v
 
 ## Algoritmo de pagerank
 
-Vamos a descomponer a $M$ en tres partes: una que corresponde a la matriz original, otra
+Vamos a descomponer a $M_1$ en tres partes: una que corresponde a la matriz original, otra
 a la unión de nodos que no son callejones con el resto de la red, y una correspondiente a 
 callejones sin salida.
 
 La matriz de pagerank la podemos escribir como
 
 ```{r}
-# M = A_red + A_salida + A_callejon
-A_red <- 0.9 * M_1
+# M_1 = A_red + A_salida + A_callejon
+A_red <- 0.9 * M
 A_salida <- matrix( 0.1 * 1/6, nrow = 6, ncol = 6)
 A_salida[5, ] <- 0
 A_callejon <- matrix(0, nrow = 6, ncol = 6)
@@ -132,7 +132,7 @@ Examinamos qué pasa cuando hacemos una iteración de pagerank de la manera lent
 
 ```{r}
 # esta multiplicacion NO la queremos hacer
-w <- t(M) %*% v
+w <- t(M_1) %*% v
 w
 ```
 
@@ -162,7 +162,7 @@ w
 que es igual a
 
 ```{r}
-t(M) %*% v
+t(M_1) %*% v
 ```
 
 
