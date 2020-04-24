@@ -409,7 +409,7 @@ if(!require(wordVectors)){
 library(wordVectors)
 ```
 
-```{r prepw2v}
+```{r}
 library(tidyverse)
 periodico <- read_lines(file= "../datos/noticias/Es_Newspapers.txt",
                         progress = FALSE)
