@@ -1,0 +1,189 @@
+---
+title: "Identificación de lenguaje"
+output: html_notebook
+---
+
+
+En este ejercicio construiremos un identificador de lenguaje 
+que distinga inglés, francés, italiano, portugués, español y turco. 
+
+Usaremos un modelo de n-gramas de caracteres (tejas).
+
+Colecciones estándar de frases
+en varios lenguajes pueden encontrarse en http://corpora.uni-leipzig.de . Revisa el contenido de estos archivos:
+
+
+```{r}
+library(tidyverse)
+# no extraer, solo listar
+archivos <- utils::unzip("../../datos/id_lenguaje/corpus_id_lenguaje.zip",
+             list = TRUE) 
+archivos
+```
+
+Extraemos el contenido de los archivos tar y seleccionamos
+los archivos que contienen las oraciones:
+
+```{bash}
+# esto corre en bash
+unzip  -o ../../datos/id_lenguaje/corpus_id_lenguaje.zip -d ../../datos/id_lenguaje/
+```
+
+
+```{r}
+descomp <- lapply(archivos$Name,
+  function(archivo) {
+    utils::untar(
+    tarfile = paste0('../../datos/id_lenguaje/', archivo), 
+    exdir = '../../datos/id_lenguaje/descomp')
+  }) 
+archivos_d <- 
+  list.files(path = '../../datos/id_lenguaje/descomp', 
+             full.names = TRUE) %>%
+  keep(function(x) str_detect(x, "sentences"))
+```
+
+Por ejemplo, tenemos:
+
+```{r}
+leer_oraciones <- function(archivo, n_max = -1, skip = 0){
+  oraciones <- read_lines(archivo, n_max = n_max, skip = skip)
+  oraciones %>% str_replace_all("^[0-9]*[\t]", "")
+}
+
+leer_oraciones(archivos_d[2], n_max = 3)
+```
+
+Identificar un lenguaje puede hacerse con **n-gramas de caracteres** (o tejas).
+Calculamos la probabilidad de cada lenguaje a partir de un modelo
+del lenguaje a partir de las secuencias de caracteres que contiene.
+
+Las primeras funciones que necesitamos son tokenizador en caracteres,
+que podemos escribir sin dificultad:
+
+```{r}
+library(tidytext)
+token_chr <- function(textos, n = 3L){
+  caracteres <- str_split(textos, pattern = '') %>%
+      map(function(x) { c(rep('_', n - 1), x) })
+  n_gramas <- tokenizers:::generate_ngrams_batch(caracteres, 
+              ngram_max = n, ngram_min = n, ngram_delim = '')
+  n_gramas
+}
+token_chr("Un día soleado.")
+```
+
+Y ahora escribimos la función que produce los conteos en
+un conjunto de entrenamiento. En este ejemplo, utilizamos
+un "vocabulario" de caracteres fijo (que aparecen más de un número
+*f_min* de veces). Los caracteres que no están en el vocabulario
+los sustituimos con $<unk>$, que en este caso denotamos como $*$
+
+```{r}
+conteo_chr <- function(archivo, n = 4L, n_max = n_max, f_min = 3){
+  df <- data_frame(txt = leer_oraciones(archivo, n_max = n_max))
+  # escoger letras en vocabulario (más de f_min apariciones)
+  vocabulario <- df %>% unnest_tokens(input = txt, output = n_grama,
+                                      token = token_chr, n = 1) %>%
+                 group_by(n_grama) %>% tally() %>% arrange(n)
+  vocab_v <- filter(vocabulario, n > f_min) %>% pull(n_grama)
+  V <- length(vocab_v)
+  # sustituir todos los caracteres que no estén en vocab_v
+  pattern <- paste(c("[^", vocab_v, "]"), collapse = '')
+  conteo <- df %>%
+           mutate(txt = str_replace_all(txt, pattern = pattern, '*' )) %>%
+           unnest_tokens(input = txt, output = n_grama, 
+                         token = token_chr, n = n) %>%
+           separate(n_grama, sep = n - 1, into = c('w_0', 'w_1')) %>%
+           group_by(w_0, w_1) %>%
+           summarise(num = length(w_1)) %>%
+           group_by(w_0) %>%
+           mutate(denom = sum(num)) %>%
+           arrange(desc(num)) %>%
+           mutate(log_p = log(num + 1) - log(denom + V)) # suavizamiento de Laplace
+  list(conteo = conteo, vocab = vocab_v, n = n)
+}
+```
+
+Ahora hacemos los conteos para las primeras 5 mil frases (el resto
+lo usamos para evaluar modelos)
+
+```{r}
+frances <- conteo_chr(archivos_d[2], n_max = 5000)
+ingles <- conteo_chr(archivos_d[1], n_max = 5000)
+frances$conteo %>% head(100)
+ingles$conteo %>% head(100)
+```
+
+**Pregunta**: cuáles son las tejas más frecuentes en inglés?
+
+Necesitaremos una función para evaluar la probabilidad de una
+frase dado cada modelo (nota que sería buena idea refactorizar esta
+función junto la función anterior):
+
+```{r}
+log_p <- function(modelo){
+  n <- modelo$n
+  vocab <- modelo$vocab
+  V <- length(vocab)
+  pattern <- paste(c("[^", vocab, "]"), collapse = '')
+  log_p_mod <- function(frases){
+     dat <- data_frame(txt = frases) %>%
+            mutate(txt = str_replace_all(txt, pattern = pattern, '*')) %>%
+            unnest_tokens(input = txt, output = n_grama, 
+                         token = token_chr, n = n) %>%
+            separate(n_grama, sep = n - 1, into = c('w_0', 'w_1')) %>%
+            left_join(modelo$conteo %>% select('w_0','denom'), by ='w_0') %>%
+            left_join(modelo$conteo %>% select('w_0','w_1','num'), by = c('w_0','w_1')) %>%
+            mutate(denom = ifelse(is.na(denom), V, denom + V)) %>%
+            mutate(num = ifelse(is.na(num), 1, num + 1)) %>%
+            mutate(log_p = log(num) - log(denom))
+     mean(dat$log_p)
+  }
+}
+frances_log_p <- log_p(frances)
+ingles_log_p <- log_p(ingles)
+```
+
+Y evaluamos la probabilidad de una frase bajo cada modelo:
+
+```{r}
+frances_1 <- frances_log_p("C'est un bon exemple")
+ingles_1 <- ingles_log_p("C'est un bon exemple")
+prob_no_norm <- exp(c(fr = frances_1, en = ingles_1))
+prob_no_norm
+```
+
+Si estamos solamente comparando inglés con francés, podemos
+normalizar las probabilidades obtenidas:
+
+```{r}
+prob_norm <- prob_no_norm/sum(prob_no_norm)
+round(prob_norm, 3)
+```
+
+```{r}
+frances_1 <- frances_log_p('This is a short example')
+ingles_1 <- ingles_log_p('This is a short example')
+prob_no_norm <- exp(c(fr = frances_1, en = ingles_1))
+prob_norm <- prob_no_norm/sum(prob_no_norm)
+round(prob_norm, 3)
+```
+
+Finalmente, podemos ahora evaluar los modelos con los conjuntos de
+prueba (puedes cambiar el tamaño de los n-gramas y el filtro de caracteres
+desconocidos para ver cómo se desempeñan):
+
+```{r}
+frances_prueba <- leer_oraciones(archivos_d[2], skip = 5000)
+ingles_prueba <- leer_oraciones(archivos_d[1], skip = 5000)
+frances_log_p(frances_prueba)
+ingles_log_p(ingles_prueba)
+```
+
+
+**Pregunta**:
+- Escoge algún otro idioma además de francés e inglés. Construye su modelo de lenguaje como
+hicimos arriba.
+- Muestra algunos ejemplos de cómo identifica correcta o incorrectamente el lenguaje en distintas frases.
+- (Extra) Muestra la matriz de confusión del clasificador de estos tres lenguajes.
