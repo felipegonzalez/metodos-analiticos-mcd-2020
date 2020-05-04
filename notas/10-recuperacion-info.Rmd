@@ -1,0 +1,756 @@
+# Recuperación de información
+
+En recuperación de información (IR), tenemos una **colección de documentos**, tenemos alguna tarea o **necesidad de información**, y queremos utilizar la colección para resolver su tarea o su pregunta. Se formula una 
+**consulta** al sistema de recuperación, y obtiene una colección de resultados 
+(documentos recuperados) que esperamos sean **relevantes** para contestar su pregunta.
+
+El desempeño del sistema de recuperación puede ser medido de distintas formas. Una de las más usuales es usar *precisión* y 
+*recall* o *exhaustividad*:
+
+- Precisión: fracción de documentos recuperados que son relevantes a la búsqueda (total de recuperados correctos o relevantes entre total recuperados).
+- Exhaustividad: fracción de los documentos relevantes que son recuperados (total de recuperados correctos o relevantes entre todos los relevantes).
+
+Evitamos usar medidas como $\%$ de correctos, pues en cada búsqueda típicamente la fracción de documentos relevantes es pequeña, y el número de documentos recuperados también es relativamente chico. Esto quiere decir, por ejemplo, que un sistema que recupera documentos al azar típicamente tiene un $\%$ alto de correctos, pues la mayor parte de los documentos no relevantes no son recuperados.
+
+
+
+
+## Recuperación booleana
+
+El enfoque más simple es recuperación booleana: una *consulta* es un documento (típicamente corto) que incluye ciertas palabras $q_1,q_2,\ldots, q_m$. Buscamos entonces todos los documentos
+que incluyen *todas* estas palabras. 
+
+Más en general, una consulta puede ser una expresión booleana en palabras. Por ejemplo:
+
+- deportes **y** atletismo **pero no** olimpiada,
+- deportes **o** atletismo.
+
+En principio podríamos hacer una búsqueda lineal (grep) sobre todos los documentos, y regresar todos los que evalúan la búsqueda a verdadero. Este enfoque es poco escalable en el número de documentos (en cada búsqueda hay que recorrer la colección completa) y no existe un concepto de orden en los resultados obtenidos.
+
+## Matrices de incidencias términos-documentos
+
+Podemos construir un índice para evitar hacer pases de los documentos cada vez que tenemos un nueva consulta. Una manera de hacerlo es construyendo la
+matriz $M$ de términos documentos, donde
+$M_{td} = 1$
+si el término $t$ está en el documento $d$, y $M_{td}=0$ en otro caso.
+
+Con esta matriz, consultas booleanas pueden ser calculadas usando
+los renglones de términos:
+
+#### Ejemplo {-}
+
+```{r, message = FALSE, warning = FALSE}
+if(!require(tm)){
+  install.packages("tm")
+}
+library(tm)
+library(tidyverse)
+library(tidytext)
+```
+
+Consideramos la siguiente colección de documentos:
+
+```{r, tidy=FALSE}
+frases <- c('el perro y el gato viven en la casa',
+            'el perro juega con la pelota',
+            'la pelota es amarilla',
+            'el gato juega con la pelota y el perro juega con el gato')
+```
+
+Construimos una matriz binaria que indica qué términos
+aparecen en qué documentos:
+
+```{r}
+vs <- VectorSource(frases)
+corpus <- VCorpus(vs)
+control_pars <- list(weighting = weightBin, wordLengths = c(2, Inf))
+td_sparse <- TermDocumentMatrix(corpus, control = control_pars)
+td_mat <- as.matrix(td_sparse)
+td_mat
+```
+
+Si queremos hacer una consulta, por ejemplo de "gato **y** perro **pero no** casa", por ejemplo, podemos hacer lógica booleana
+con los vectores de términos:
+
+```{r}
+consulta <- as.logical(td_mat["perro", ])
+print("Contienen perro:")
+frases[consulta]
+```
+
+
+```{r}
+print("contienen perro y gato")
+consulta <- consulta & td_mat["gato", ]
+frases[consulta]
+```
+
+
+```{r}
+print("Contienen perro y cato pero no casa:")
+consulta <- consulta & (!td_mat["casa", ])
+frases[consulta]
+```
+
+---
+
+**Observaciones**: 
+
+- Como hemos visto en otros casos, no conviene 
+usar una matriz densa. Típicamente la matriz de términos documentos es grande (podría ser fácilmente de cientos de miles por millones, por ejemplo) y rala (relativamente pocos 1's), por lo que es mejor usar una matriz rala.
+
+```{r}
+td_sparse
+str(td_sparse)
+```
+
+
+- Ventajas de las búsquedas binarias: para usuarios avanzados es una técnica útil (por ejemplo, búsquedas
+muy particulares en documentos legales). Es fácil entender exactamente que documentos son los recuperados. 
+
+- Desventajas: Menos útil cuando no sabemos exactamente qué estamos buscando. No hay una medida de ordenamiento de los resultados. No utiliza frecuencia de aparición de los términos, lo cual puede ser un indicador de relevancia.
+
+
+## Índice invertido
+
+En primer lugar, mostramos la estructura estándar que se utiliza 
+para recuperacion de documentos: el índice invertido. 
+
+El índice invertido agrupa, para cada término $t$, todos los
+id's de los documentos que lo contienen. 
+
+
+#### Ejemplo{-}
+
+Veamos dos maneras de calcular el índice invertido (en estos ejemplos
+hacemos el cálculo en memoria, pues nuestros datos son chicos):
+
+```{r}
+df_frases <- data_frame(id = 1:length(frases), frase = frases) %>%
+  unnest_tokens(palabras, frase) %>% 
+  group_by(id, palabras) %>%
+  summarise(term_frec = length(palabras)) %>%
+  group_by(palabras) %>%
+  mutate(doc_frec = length(id))
+ii_lista <- split(df_frases, df_frases$palabras) %>% 
+  map(function(df){ select(ungroup(df), -palabras) %>% ungroup })
+ii_lista[1:3]
+```
+
+Y también podríamos hacer (usando la tabla hash de los *environments* de R,  que es más eficiente
+para bucar términos, como un diccionario de python):
+
+```{r}
+crear_indice <- function(frases){
+  indice <- new.env(hash = TRUE)
+  for(i in 1:length(frases)){
+    # convertimos a tokens
+    tokens <- tokenizers::tokenize_words(frases[i], simplify = TRUE)
+    # los numeramos
+    tokens_f <- factor(tokens)
+    # contamos para tener frecuencia de ocurrencia en el doc
+    tokens_conteo <- tabulate(tokens_f)
+    nombres <- levels(tokens_f)
+    # agregar documentos a cada token
+    for(j in 1:length(tokens_conteo)){
+      token <- nombres[j]
+      indice[[token]] <- c(indice[[token]], 
+                           list(c('doc' = i, 'frec_doc' = tokens_conteo[j]))) 
+    }
+  }
+  indice
+}
+ii_env <- crear_indice(frases)
+ii_env[["el"]]
+```
+
+```{block2, type='resumen'}
+Para construir un **índice invertido** de una colección de textos, 
+
+1. Limpiamos la colección de textos (eliminar puntuación, HTML, etc).
+2. Tokenizamos los textos, convirtiendo cada documento en una colección de tokens (usando como separadores espacios en blanco y/o puntuación).
+3. Hacemos preprocesamiento de los tokens (por ejemplo, pasar a minúsculas, lematizar, eliminar stopwords). También podemos agregar términos como sinónimos 
+(si aparece *brincar*, agregar también *saltar*, etc).
+4. Creamos el índice invertido, que consiste de un diccionario indexado por los términos, y término apunta a los indentificadores de los documentos que contienen este término (el diccionario puede estar en memoria, y contener apuntadores a archivos de disco donde estan los doc_id).
+```
+
+Para hacer búsquedas con el índice invertido de conjunciones de términos,
+encontramos los términos, e intersectamos las listas de doc_id\'s.
+
+#### Ejemplo {-}
+
+Supongamos que buscamos perro **y** gato.
+
+```{r}
+perro_y_gato <- intersect(ii_lista[["perro"]] %>% pull(id), 
+                ii_lista[["gato"]] %>% pull(id))
+frases[perro_y_gato]
+```
+
+---
+
+**Observaciones**
+
+- Como los id\'s están ordenados, es posible 
+encontrar la intersección de forma más eficiente. Ver [@manning], capítulo 1.
+- Piensa cómo sería el procesamiento de consultas cuando hay *AND*, *OR*, y *NOT*.
+
+**Más acerca del índice invertido**
+
+- Para una colección grande de documentos, el índice invertido puede tener gran tamaño, y el desempeño en recuperación debe ser bueno. El índice invertido puede,
+por ejemplo, estar particionado en varios nodos de un cluster. Cada nodo contiene el índice de un subconjunto de documentos. Cuando hacemos una consulta se envía a todos los nodos, y cada uno de ellos devuelve documentos candidatos para ser agregados y presentados al usuario. Ver por ejemplo [Elasticsearch](https://www.elastic.co),
+y el capítulo 4 de [@manning].
+
+
+## Modelo de espacio vectorial
+
+Como discutimos arriba, el método de recuperación booleano tiene el defecto
+de que no produce ningún ordenamiento de los resultados. 
+
+En el modelo de espacio vectorial tradicional, 
+
+- Consideramos documentos (inicialmente) como vectores
+en un espacio de términos que contienen
+- Consideramos queries o búsquedas también como documentos, así que también están representados
+como vectores en el espacio de términos.
+- Si $d$ es un documento, y $q$ es una búsqueda, entonces 
+documentos relevantes son los que tienen $\sim(d, q)$ alto.
+
+Podríamos considerar
+intentar algo como usar similitud de Jaccard entre documentos recuperados y consulta, 
+pero esto no va a funcionar muy bien: en primer lugar, la consulta es de tamaño fijo,
+pero los documentos pueden variar mucho en tamaño. El coeficiente de Jaccard
+tendería a dar menor similitud para documentos más largos. En segundo
+lugar, documentos con más alta frecuencia de los términos consultados son
+típicamente más relevantes a la consulta, y el coeficiente de Jaccard no toma en cuenta el número de ocurrencias.
+
+Un primer paso es ponderar cada término en un documento dependiendo
+del número de veces que el término aparece en el documento.
+
+### Ponderación por frecuencia de términos
+
+En primer lugar, tomamos en cuenta la **frecuencia de términos** dentro de los documentos. Definimos $tf_{i,d}$ como el número
+de veces que aparece el término (palabra) $i$ en el documento $d$. Podemos definir el peso de un término dentro de un documento de varias maneras:
+
+1. Frecuencia $$ w_{i,d} = tf_{i,d}.$$
+
+2. Log-frecuencia: 
+
+\begin{equation}
+w_{i,d}=\left\{
+\begin{array}{lr}
+1+ \log (tf_{i,d}), & tf_{i,d}>0\\
+0, & tf_{id}=0.
+\end{array}
+\right.
+\end{equation}
+
+
+3. Frecuencia normalizada $$ w_{i,d} = \frac{tf_{id}}{\max_j tf_{jd}}.$$
+
+Denotamos por $w_d$ el vector que contiene las frecuencias para cada término:
+$$w_d = (w_{1,d}, w_{2,d},\ldots, w_{m, d}).$$
+
+
+Nótese que los primeros dos tienen la propiedad de dar más importancia, generalmente,
+a documentos más grandes, pues los términos tienden a aparecer más veces en ellos (a la inversa
+de lo que vimos antes). Esto no necesariamente es indeseable. 
+La segunda opción modera el crecimiento de estos conteos a través del logaritmo.
+
+**Idea**: usar distancia de coseno de los vectores de frecuencias (en lugar de 1s o 0s). Esto hace más
+similares documentos en los que un mismo término aparece varias veces.
+
+Con esto podemos dar nuestra primera medida de similitud entre documentos
+(o entre un documento $d$ y una consulta $q$):
+
+$$sim(q, d) = \frac{< w_{q}, w_d>}{||w_d||\cdot||w_q||},$$
+que es igual a
+$$sim(q, d) = \frac{\sum_i w_{i,q} w_{i,d}} {\sqrt{\sum_i w_{i,q}^2}\sqrt{\sum_i w_{i,d}^2}},$$
+que es el producto punto de los vectores $w_q$ y $w_d$ después de normalizarlos.
+
+Observación: nótese que para calcular distancia coseno entre los documentos de una colección y un documento *query*, basta:
+
+1. Calcular la matriz términos documentos ponderada por frecuencia, y normalizada para que cada columna tenga tamaño 1.
+2. Calcular el vector de frecuencias normalizado para el query.
+3. Multiplicar este último vector por la matriz términos documentos.
+
+El vector resultante da las distancias coseno entre el documento y el *query*.
+
+#### Ejemplo {-}
+
+Para nuestro minicorpus anterior:
+```{r, warning=FALSE, message=FALSE}
+library(Matrix)
+vs <- VectorSource(frases)
+vs
+corpus <- VCorpus(vs)
+control_pars <- list(weighting = weightTf, wordLengths = c(2, Inf))
+td_sparse <- TermDocumentMatrix(corpus, control = control_pars) 
+td_sparse
+```
+
+```{r, warning = FALSE, message = FALSE}
+vocabulario <- td_sparse$dimnames$Terms
+vocabulario
+```
+
+```{r}
+library(slam)
+procesar_query <- function(query, vocabulario){
+  control_pars <- list(weighting = weightTf, wordLengths = c(2, Inf),
+                       dictionary = vocabulario) #usar vocabulario fijo
+  vs <- VectorSource(query)
+  corpus_q <- VCorpus(vs)
+  td_sparse <- TermDocumentMatrix(corpus_q, control = control_pars)
+  td_sparse
+}
+vec <- procesar_query("gato perro gato", vocabulario)
+inspect(vec)
+```
+
+Ahora podemos calcular las similitudes coseno:
+
+```{r}
+sim_cos <- function(x, y){
+  sum(x*y) / (sqrt(sum(x^2)) * sqrt(sum(y^2)))
+}
+similitudes <- sapply(1:ncol(td_sparse), function(j) {sim_cos(td_sparse[, j], vec)  })
+similitudes
+frases
+```
+
+#### Ejemplo {-}
+Ahora haremos prueba con nuestro corpus de fragmentos de noticias.
+
+```{r}
+periodico_original <- read_lines(file = '../datos/noticias/Es_Newspapers.txt',
+                        progress = FALSE)
+length(periodico_original)
+```
+
+Nuestra función para normalizar textos será:
+
+```{r}
+normalizar <- function(texto, vocab = NULL){
+  texto <- tolower(texto)
+  texto <- gsub("-", " ", texto) # separar palabras con guión
+  texto <- gsub("\\.[^0-9]", " ", texto) # quitar puntos
+  texto <- gsub("[«»;\\:\\.,'\"()¿?!¡\\-\\/]", " ", texto)
+  texto <- gsub("\\s+", " ", texto)
+  texto
+}
+periodico <- normalizar(periodico_original)
+periodico[c(1,5,7)]
+```
+
+
+
+
+```{r, message = FALSE, warning = FALSE}
+vs <- VectorSource(periodico)
+corpus_noticias <- VCorpus(vs, readerControl = list(language = "es"))
+td_noticias <- TermDocumentMatrix(corpus_noticias, 
+      control = list(weighting = weightTf, wordLengths = c(2, Inf))) 
+vocabulario_noticias <- td_noticias$dimnames$Terms
+td_noticias_tf <- weightSMART(td_noticias, spec = "nnc")
+```
+
+Y vamos a hacer un query:
+
+```{r}
+procesar_query <- function(query, vocabulario, normalizar_fun){
+  query <- normalizar_fun(query)
+  vs <- VectorSource(query)
+  corpus_q <- VCorpus(vs)
+  td_sparse <- TermDocumentMatrix(corpus_q, 
+      control = list(weighting = weightTf,
+           wordLengths = c(2, Inf),
+           dictionary = vocabulario)) #usar vocabulario fijo
+  td_sparse
+}
+calc_sim <- function(vec, td_noticias){
+  norm_2 <- sqrt(col_sums(vec^2))
+  cross_prod <- crossprod_simple_triplet_matrix(vec, td_noticias)
+  print(length(norm_2))
+  cross_prod /norm_2
+}
+vec <- procesar_query("comida cocina", vocabulario_noticias, normalizar)
+similitudes <- calc_sim(vec, td_noticias_tf)
+recuperados <- periodico[order(similitudes[1,], decreasing = TRUE)[1:100]] 
+head(recuperados, 20)
+```
+
+Los resultados se ven razonables. Sin embargo, si utilizamos este sistema,
+podríamos intentar también la consulta:
+
+```{r}
+vec <- procesar_query("la comida y la cocina", vocabulario_noticias, normalizar)
+similitudes <- calc_sim(vec, td_noticias_tf)
+recuperados <- periodico[order(similitudes[1,], decreasing = TRUE)[1:100]] 
+head(recuperados, 10)
+```
+
+Y los resultados son muy malos. La razón es que muchos documentos
+contienen la palabra *la*, y resultan en una similitud alta con la consulta.
+Sin embargo, la palabra *la* ocurre en una gran parte de los documentos,
+de modo que no discrimina mucho en nuestra búsqueda, y deberíamos ponderar
+más las palabras *cocina* y *comida*, que ocurren en una fracción menor y
+por lo tanto son más específicas a nuestra consulta.
+
+
+
+
+
+
+## Frecuencia inversa en documentos
+
+Ahora tenemos que considerar que los términos que ocurren poco (cuando coinciden con nuestras búsquedas), son mejores para discriminar que términos que ocurren mucho, de modo que distintos términos tienen que tener distintos pesos al ordenar los resultados.
+
+Si $df_i$ es el número de veces que aparece un término $i$ en la colección de documentos,  y $N$ es el total de documentos en la colección, definimos:
+la **frecuencia inversa de documentos** como
+$$idf_i = log\left(\frac{N}{df_i}\right)$$
+
+Y definimos los pesos finales **tf-idf** como sigue
+
+$$w_{i,d} = idf_i \times tf_{i,d}$$
+
+Puede intentarse también usar la frecuencia inversa sin logaritmo, pero la
+forma con logaritmo es más común.
+
+
+
+Bajo este esquema de podneración por término y frecuencia inversa en documentos,
+la similitud entre un documento $d$ dado y un query $q$ está dada por
+
+$$sim(q, d) = \frac{ \sum_{w\in q,d} tf_{w,q}tf_{w,d} (idf_w)^2 }{\sqrt{\sum_{i\ in q}(tf_{i,q} idf_i)^2 }\sqrt{\sum_{i \in d} (tf_{i,d} idf_i)^2 }}$$
+
+#### Ejercicio {-}
+Si hacemos un query de un solo término, ¿cómo afecta 
+agregar el idf al scoring de los resultados?
+
+- Respuesta: no afecta en nada. La razón es que el idf depende del término,
+y no del documento.
+
+- Sin embargo, para queries de más de un término, el idf puede ayudar mucho: por ejemplo, si buscamos *el perro*, la palabra *el* estará ponderada hacia abajo, pues ocurre mucho, y se valorarán más alto documentos que contengan la palabra *perro*.
+
+---
+
+#### Ejemplo {-}
+En nuestro minicorpus, las frecuencias inversas son
+```{r}
+td_mat <- as.matrix(td_sparse)
+n_i <- row_sums(td_mat > 0)
+idf <- log(ncol(td_mat)/n_i)
+data_frame(termino = names(n_i), n = n_i, idf = round((idf), 3)) %>% arrange(desc(idf))
+```
+
+Y entonces la representación vectorial está dada por:
+
+```{r}
+td_mat * idf
+```
+
+
+
+#### Ejemplo {-}
+
+Regresamos a nuestro ejemplo anterior. Este proceso donde dominan los términos 
+frecuentes "la" e "y":
+
+
+Y ahora ponderamos por la frecuencia inversa en documentos:
+
+```{r}
+td_noticias_tfidf <- weightSMART(td_noticias, spec='ntc')
+```
+
+```{r}
+vec <- procesar_query("la comida y la cocina", vocabulario_noticias, normalizar)
+similitudes <- calc_sim(vec, td_noticias_tfidf)
+recuperados <- periodico[order(similitudes[1,], decreasing = TRUE)[1:100]] 
+head(recuperados, 20)
+```
+
+
+Nótese que en este ejemplo no multiplicamos las frecuencias inversas sobre documentos en el vector de *query*. 
+
+## Notación SMART
+
+Las alternativas que tenemos para nuestro sistema de recuperació́n de textos son, para documentos y queries:
+
+- Frecuencia de términos: frecuencia bruta (n) o logarítmica (l).
+- Frecuencia de documentos: ninguna (n), idf (t).
+- Normalización: ninguna (n), coseno (c).
+
+Denotamos como xxx.yyy a un sistema dado. Por ejemplo, un sistema que usa frecuencia logarítmica, sin frecuencia de documentos, con normalizació́n coseno para los documentos, y para los queries frecuencia logarítmica con idf y normalizació́n coseno es lnc.ltc
+
+- El método más popular es ntc.ntc, aunque también se utilizan otros como lnc.ltc.
+
+## Definición del diccionario
+
+En esta parte discutimos distintas posibilidades para el paso de tokenización.
+
+### Stopwords (términos comunes)
+
+En algunos casos puede ser conveniente eliminar del todo palabras *stopword*
+(palabras que tienden a ocurrir en casi todos los textos, como artículos, preposiciones, conjunciones, etc.) La idea es que estos términos no ayudan
+en las búsquedas, y pueden reducir el tamaño del índice invertido (o de la matriz
+de pesos términos-documentos).
+
+En sistemas más avanzados y recientes, las stopwords no se eliminan muchas
+veces para conservar el significado de consultas como "viajes a Londres": en este
+caso, también necesitamos incluir en nuestro índice invertido las posiciones donde aparecen las palabras (ver [@manning], sección 2.4).
+
+### Normalización
+
+En la normalización, buscamos crear clases de equivalencia entre tokens que aparecen en nuestro texto, que deben ser considerados como equivalentes en las búsquedas. Las normalizaciones más comunes son (todas pueden ayudar o dañar el desempeño):
+
+- Reducir todos los tokens a minúsculas (de forma que no importa si los términos ocurren al principio de una frase). En general es buena idea, aunque en algunos casos pueden hacerse forma más refinada (por ejemplo, la ciudad Pisa y el verbo pisa).
+
+- Corregir ortografía. También es posible hacer corrección de ortografía para mejorar el resultado de consultas. Este paso se puede hacer solamente para las consultas, por ejemplo.
+
+- Quitar acentos. Esto tiene la ventaja de poder dar buenas respuestas a consultas que tienen faltas de ortografía. Por otro lado, también introduce ambiguedades.
+
+
+
+### Stemming 
+
+En el paso de *stemming* intentamos reducir los tokens a palabras raíz. Por ejemplo, si alguien busca "frutas", la  búsqueda debería incluir también términos como "fruta", "frutería", etc. Una consulta como "comiendo frutas" debería regresar resultados como "comer fruta", "comer frutas".
+
+Existen *stemmers* automáticos que intentan aproximar la palabra raíz de cada forma que observamos. En español, podemos usar el *Snowball stemmer*, que es relativamente simple (ver [esta liga](http://snowball.tartarus.org/algorithms/spanish/stemmer.html)).
+
+```{r}
+stemDocument("Esos meses comíamos muchas frutas", language = "spanish")
+stemDocument("Ese mes comí mucha fruta", language = "spanish")
+stemDocument("comenzar comenzábamos comienzo comienzos biblioteca bibliotecario", language = "spanish")
+```
+
+Pero el stemming puede también afectar el desempeño: por ejemplo, si queremos
+buscar "investigación de operaciones", el stemmer no necesariamente ayuda a
+encontrar resultados relevantes;
+
+```{r}
+stemDocument("investigación operaciones", language = "spanish")
+stemDocument("operar investigadores", language = "spanish")
+```
+
+**Observación**: 
+
+- Es importante recordar que típicamente, todas las transformaciones que hacemos
+al construir el índice deben de repetirse para las consultas.
+
+#### Ejemplo {-}
+
+Agregamos stemming:
+
+```{r, message = FALSE, warning = FALSE}
+normalizar_stem <- function(texto, vocab = NULL){
+  texto <- tolower(texto)
+  texto <- gsub("-", " ", texto) # separar palabras con guión
+  texto <- gsub("\\.[^0-9]", " ", texto) # quitar puntos
+  texto <- gsub("[«»;\\:\\.,'\"()¿?!¡\\-\\/]", " ", texto)
+  texto <- gsub("\\s+", " ", texto)
+  stemDocument(texto, language = "spanish")
+}
+periodico <- normalizar_stem(periodico_original)
+vs <- VectorSource(periodico)
+corpus_noticias <- VCorpus(vs, readerControl = list(language = "es"))
+td_noticias <- TermDocumentMatrix(corpus_noticias, 
+      control = list(weighting = weightTf, wordLengths = c(2, Inf))) 
+vocabulario_noticias <- td_noticias$dimnames$Terms
+sample(vocabulario_noticias, 50)
+td_noticias_tfidf <- weightSMART(td_noticias, spec = "ntc")
+```
+
+
+```{r}
+vec <- procesar_query("la comida y la cocina", vocabulario_noticias, normalizar_stem)
+similitudes <- calc_sim(vec, td_noticias_tfidf)
+recuperados <- periodico_original[order(similitudes[1,], decreasing = TRUE)[1:100]] 
+head(recuperados, 20)
+```
+
+
+
+
+
+## Indexado semántico latente
+
+El modelo de espacio vectorial para recuperación de documentos
+(o en otras tareas como creación de variables para construir modelos de clasificación, por ejemplo), tiene la desventaja
+de no explotar la estructura de la colección de documentos más
+allá de frecuencias de términos particulares. En particular, por ejemplo, no es posible directamente cuáles términos son 
+sinónimos o cercanos a sinónimos, ni entender que una palabra
+puede tener más de un significado. Este tipo de aspectos pueden
+resolverese en parte considerando la ocurrencia conjunta de términos, por ejemplo:
+
+- Si consideramos que "carro" y "coche" ocurren en varios
+documentos que tienen frecuencias similares de otros términos
+(gasolina, llantas, viaje, etc.), quizá podríamos "agruparlos", de manera que búsquedas de uno o otro término resulte en devolver 
+colecciones de documentos similares.
+
+Una idea para construir estas "agrupaciones" es utilizar
+la descomposición en valores singulares (DVS) de la matriz términos - documentos para aproximar esta matriz mediante otra de rango bajo.
+
+Consideremos entonces una matriz $C$ de términos-documentos de
+tamaño $M\times N$. Utilizando la DVS, podemos aproximar $C$ mediante una matriz $C_k$ dada por:
+
+$$C \approx C_k = U_k\Sigma_k V_k^t,$$
+
+donde $U_k$ es una matriz ortogonal de tamaño $M\times k$,
+$V_k$ es una matriz ortogonal de tamaño $M\times k$, y 
+$\Sigma_k$ es una matriz diagonal con los $k$ valores singulares
+más grandes en la diagonal (ver por ejemplo 
+[esta explicación](https://felipegonzalez.github.io/aprendizaje-maquina-mcd/reduccion-de-dimensionalidad.html#descomposicion-en-valores-singulares-svd-o-dvs).
+
+Esta reducción de dimensionalidad la podemos ver como 
+una tarea de compresión, donde términos que tienen co-ocurrencias
+similares de otros términos tienden a agruparse en una sola dimensión.
+
+#### Ejemplo {-}
+
+Consideremos los siguientes textos:
+
+```{r, tidy=FALSE}
+frases <- c('viajamos en carro y se ponchó una llanta',
+            'los coches tienen llantas',
+            'un coche sin llantas',
+            'un carro con llantas ponchadas',
+            'hicimos un viaje en coche',
+            'viajamos en carro', 'viajamos en coche',
+            'La cocina catalana es ligera',
+            'me gusta cocinar', 
+            'una cocina muy tradicional',
+            'me gusta la cocina tradicional')
+frases_norm <- normalizar_stem(frases)
+```
+
+Construimos una matriz binaria que indica qué términos
+aparecen en qué documentos:
+
+```{r}
+vs <- VectorSource(frases_norm)
+corpus <- VCorpus(vs)
+td_sparse <- TermDocumentMatrix(corpus, 
+      control = list(weighting = weightBin,
+           wordLengths = c(3, Inf))) 
+td_mat <- as.matrix(td_sparse)
+td_mat
+```
+
+Consideremos la descomposición en valores singulares:
+
+```{r}
+svd_ejemplo <- svd(td_mat)
+```
+
+Las columnas de la matriz $U$ pueden ser considerados
+como "documentos latentes". Consideramos los primeros dos:
+
+```{r}
+U_2 <- - svd_ejemplo$u[,1:2]
+rownames(U_2) <- rownames(td_mat)
+U_ord <- round(U_2, 1)[order(U_2[,1]),]
+U_ord
+nom_ord <- rownames(U_ord)
+```
+
+Y notamos que la primera dimensión captura aquellos
+documentos con ocurrencia alta de términos relacionados con 
+coches: este es un término nuevo
+que podemos llamar "automotriz", por ejemplo. Estos términos
+están agrupados en esta dimensión pues ocurren juntos
+en varios documentos, lo que implica que podemos "comprimir"
+estas frecuencias en una sola dimensión.
+
+Los documentos con contenido alto del nuevo término
+"automotriz" son los que tienes valores altos en este
+primer término, por ejemplo:
+
+```{r}
+V_2 <- -svd_ejemplo$v[,1:2] # podemos cambiar signo de U y V
+tibble(frase = frases, v_1 = round(V_2[, 1], 1), v_2 = round(V_2[, 2], 1))
+```
+
+---
+
+Nótese que podemos pensar que esta es nuestra nueva matriz documentos-términos ($V_k$), con "términos" latentes o dimensiones latentes, y podemos **calcular similitudes de documentos usando la similitud
+coseno**. Para encontrar las coordenadas latentes de los documentos (en coordenadas $V$),
+notamos que como $C_k = U_k^t \Sigma_kV_kt$, entonces
+
+$$V_k^t = \Sigma_k^{-1}U_k^tC_k.$$
+De modo que para mapear un nuevo documento o query $q$ en el espacio de dimensiones semánticas hacemos
+$$q_s = \Sigma_k^{-1} U_k^t q,$$
+donde $q$ es la respresentación vectorial del query. Podemos ahora comparar $q_s$ directamente
+con los vectores de la matriz $V_k.$
+
+#### Ejemplo {-}
+
+Supongamos que tenemos el query "un viaje en coche". El vector asociado es:
+
+```{r}
+vocab_ejemplo <- rownames(td_mat)
+q <- procesar_query("un viaje en coche", vocab_ejemplo, normalizar_stem)
+q <- as.matrix(q)
+q
+```
+
+Ahora mapeamos a las dimensiones latentes:
+
+```{r}
+S_2 <- svd_ejemplo$d[1:2]
+q_s <- diag(1 / S_2) %*% t(U_2) %*% q
+q_s
+```
+
+Y ahora podemos comparar con los reglones de $V$, que dan la representación de
+los documentos originales. 
+
+```{r}
+normas <- apply(V_2, 1, function(x){ sqrt(sum(x^2)) })
+V_2_norm <- V_2 / normas
+q_s_norm <- q_s / sqrt(sum(q_s^2))
+ tibble(frases = frases, sim = V_2_norm %*% q_s_norm %>% as.numeric) %>% arrange(desc(sim))
+```
+
+Nótese como recuperamos también frases similares con el término "carro", que no
+está en el query original.
+
+
+### Ejemplo
+
+Ahora repetimos con el corpus de noticias. Consideremos solo unas cuantas dimensiones
+latentes importantes (normalmente utilizaríamos orden de cientos para similitud):
+
+```{r}
+library(irlba)
+td_sparse <- sparseMatrix(i = td_noticias_tfidf$i, j = td_noticias_tfidf$j, x = td_noticias_tfidf$v)
+noticias_svd <- irlba(td_sparse, nv = 5, nu = 5)
+```
+
+Por ejemplo, los términos:
+
+```{r}
+terminos <- tibble(termino = Terms(td_noticias_tfidf),
+                   dim_1 = noticias_svd$u[,3], dim_2 = noticias_svd$u[,4])
+head(terminos %>% arrange(dim_2),40)
+```
+
+
+```{r}
+head(terminos %>% arrange(dim_1), 40)
+```
+
+
+
+- El método de indexado semántico latente es intensivo en cómputo, y es difícil escalar
+a colecciones muy grandes. 
+
+- Sin embargo, en algunos casos puede dar ventajas en recuperación
+de documentos gracias a la reducción de dimensionalidad (reconocimiento de sinónimos, por ejemplo).
+
+- También es posible usar las dimensiones latentes para construir modelo de clasificación de textos o
+clustering, por ejemplo.
+
+
+
