@@ -5,3 +5,5 @@ notas/_bookdown_files/
 notas/_book/
 notas/*.rds
 *logs/
+*DS_Store*
+*checkpoint/
