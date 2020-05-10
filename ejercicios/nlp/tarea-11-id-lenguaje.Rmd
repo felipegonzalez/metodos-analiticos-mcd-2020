@@ -46,13 +46,20 @@ archivos_d <-
 Por ejemplo, tenemos:
 
 ```{r}
-leer_oraciones <- function(archivo, n_max = -1, skip = 0){
-  oraciones <- read_lines(archivo, n_max = n_max, skip = skip)
-  oraciones %>% str_replace_all("^[0-9]*[\t]", "")
+leer_oraciones <- function(archivo, n_max = -1L, skip = 0){
+  # por un bug de read_lines (comillas que no cierran), tenemos 
+  # que leer todo el archivo:
+  oraciones <- read_lines(archivo, n_max = -1L, skip = 0)
+  oraciones <- oraciones %>% 
+    str_replace_all("^[0-9]*[\t] ", "") %>% 
+    str_replace_all("[^[:alnum:] ]", "")
+  # devolver aquí:
+  final = ifelse(n_max > 0, skip + n_max, length(oraciones))
+  oraciones[(skip + 1):final]
 }
-
-leer_oraciones(archivos_d[2], n_max = 3)
 ```
+
+
 
 Identificar un lenguaje puede hacerse con **n-gramas de caracteres** (o tejas).
 Calculamos la probabilidad de cada lenguaje a partir de un modelo
@@ -80,8 +87,8 @@ un "vocabulario" de caracteres fijo (que aparecen más de un número
 los sustituimos con $<unk>$, que en este caso denotamos como $*$
 
 ```{r}
-conteo_chr <- function(archivo, n = 4L, n_max = n_max, f_min = 3){
-  df <- data_frame(txt = leer_oraciones(archivo, n_max = n_max))
+conteo_chr <- function(archivo, n = 4L, n_max = -1, skip = 0, f_min = 3){
+  df <- data_frame(txt = leer_oraciones(archivo, n_max = n_max, skip = skip))
   # escoger letras en vocabulario (más de f_min apariciones)
   vocabulario <- df %>% unnest_tokens(input = txt, output = n_grama,
                                       token = token_chr, n = 1) %>%
@@ -109,10 +116,11 @@ Ahora hacemos los conteos para las primeras 5 mil frases (el resto
 lo usamos para evaluar modelos)
 
 ```{r}
-frances <- conteo_chr(archivos_d[2], n_max = 5000)
-ingles <- conteo_chr(archivos_d[1], n_max = 5000)
-frances$conteo %>% head(100)
-ingles$conteo %>% head(100)
+frances_entrena <- conteo_chr(archivos_d[2], n_max = 5000)
+ingles_entrena <- conteo_chr(archivos_d[1], n_max = 5000)
+turco <- conteo_chr(archivos_d[6], n_max = 5000)
+frances_entrena$conteo %>% head(100)
+ingles_entrena$conteo %>% head(100)
 ```
 
 **Pregunta**: cuáles son las tejas más frecuentes en inglés?
@@ -141,8 +149,8 @@ log_p <- function(modelo){
      mean(dat$log_p)
   }
 }
-frances_log_p <- log_p(frances)
-ingles_log_p <- log_p(ingles)
+frances_log_p <- log_p(frances_entrena)
+ingles_log_p <- log_p(ingles_entrena)
 ```
 
 Y evaluamos la probabilidad de una frase bajo cada modelo:
@@ -175,8 +183,8 @@ prueba (puedes cambiar el tamaño de los n-gramas y el filtro de caracteres
 desconocidos para ver cómo se desempeñan):
 
 ```{r}
-frances_prueba <- leer_oraciones(archivos_d[2], skip = 5000)
-ingles_prueba <- leer_oraciones(archivos_d[1], skip = 5000)
+frances_prueba <- leer_oraciones(archivos_d[2], skip = 5000, n_max = -1L)
+ingles_prueba <- leer_oraciones(archivos_d[1], skip = 5000, n_max = -1L)
 frances_log_p(frances_prueba)
 ingles_log_p(ingles_prueba)
 ```
