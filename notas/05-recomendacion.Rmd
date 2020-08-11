@@ -880,7 +880,7 @@ u_2 <- c(-3,-3,0,-2,4)
 ```
 
 
-Que quiere decir que las películas $2, 3$ tienen volencia, pero la película $1$ no. Por otra parte, a los usuarios $1,2$ y $5$ no les gustan las películas con violencia, mientras que al usuario $5$ si les gustan.
+Que quiere decir que las películas $2, 3$ tienen volencia, pero la película $1$ no. Por otra parte, a los usuarios $1,2$ y $4$ no les gustan las películas con violencia, mientras que al usuario $5$ si les gustan.
 
 La idea ahora es que el gusto de una persona por una película se escribe como combinación de las dos dimensiones. Por ejemplo, para la persona $1$ tenemos, y la película $1$, empezamos haciendo
 
